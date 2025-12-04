@@ -1,0 +1,155 @@
+---
+# Ansible Playbook Tests
+# ======================
+# Tests to verify the setup-vps.yaml playbook configuration
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini tests/ansible/test-setup-vps.yaml
+
+- name: Test VPS Setup Configuration
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  tasks:
+    # =========================================
+    # Docker Tests
+    # =========================================
+    - name: Test Docker is installed
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+      failed_when: docker_version.rc != 0
+
+    - name: Test Docker service is running
+      ansible.builtin.systemd:
+        name: docker
+      register: docker_service
+      failed_when: docker_service.status.ActiveState != "active"
+
+    - name: Test Docker can run containers
+      ansible.builtin.command: docker run --rm hello-world
+      register: docker_hello
+      changed_when: false
+      failed_when: "'Hello from Docker!' not in docker_hello.stdout"
+
+    # =========================================
+    # MicroK8s Tests
+    # =========================================
+    - name: Test MicroK8s is installed
+      ansible.builtin.command: microk8s version
+      register: microk8s_version
+      changed_when: false
+      failed_when: microk8s_version.rc != 0
+
+    - name: Test MicroK8s is running
+      ansible.builtin.command: microk8s status
+      register: microk8s_status
+      changed_when: false
+      failed_when: "'microk8s is running' not in microk8s_status.stdout"
+
+    - name: Test MicroK8s DNS addon is enabled
+      ansible.builtin.command: microk8s status
+      register: addon_dns
+      changed_when: false
+      failed_when: "'dns: enabled' not in addon_dns.stdout"
+
+    - name: Test MicroK8s storage addon is enabled
+      ansible.builtin.command: microk8s status
+      register: addon_storage
+      changed_when: false
+      failed_when: "'storage: enabled' not in addon_storage.stdout"
+
+    - name: Test MicroK8s registry addon is enabled
+      ansible.builtin.command: microk8s status
+      register: addon_registry
+      changed_when: false
+      failed_when: "'registry: enabled' not in addon_registry.stdout"
+
+    - name: Test MicroK8s ingress addon is enabled
+      ansible.builtin.command: microk8s status
+      register: addon_ingress
+      changed_when: false
+      failed_when: "'ingress: enabled' not in addon_ingress.stdout"
+
+    - name: Test kubectl can access cluster
+      ansible.builtin.command: microk8s kubectl get nodes
+      register: kubectl_nodes
+      changed_when: false
+      failed_when: kubectl_nodes.rc != 0
+
+    - name: Test cluster node is Ready
+      ansible.builtin.command: microk8s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
+      register: node_ready
+      changed_when: false
+      failed_when: node_ready.stdout != "True"
+
+    # =========================================
+    # UFW Firewall Tests
+    # =========================================
+    - name: Test UFW is installed
+      ansible.builtin.command: ufw version
+      register: ufw_version
+      changed_when: false
+      failed_when: ufw_version.rc != 0
+
+    - name: Test UFW is active
+      ansible.builtin.command: ufw status
+      register: ufw_status
+      changed_when: false
+      failed_when: "'Status: active' not in ufw_status.stdout"
+
+    - name: Test UFW allows SSH (port 22)
+      ansible.builtin.command: ufw status
+      register: ufw_ssh
+      changed_when: false
+      failed_when: "'22/tcp' not in ufw_ssh.stdout"
+
+    - name: Test UFW allows HTTP (port 80)
+      ansible.builtin.command: ufw status
+      register: ufw_http
+      changed_when: false
+      failed_when: "'80/tcp' not in ufw_http.stdout"
+
+    - name: Test UFW allows HTTPS (port 443)
+      ansible.builtin.command: ufw status
+      register: ufw_https
+      changed_when: false
+      failed_when: "'443/tcp' not in ufw_https.stdout"
+
+    - name: Test UFW allows MicroK8s API (port 16443)
+      ansible.builtin.command: ufw status
+      register: ufw_k8s
+      changed_when: false
+      failed_when: "'16443/tcp' not in ufw_k8s.stdout"
+
+    - name: Test UFW allows OCR service (port 18080)
+      ansible.builtin.command: ufw status
+      register: ufw_ocr
+      changed_when: false
+      failed_when: "'18080/tcp' not in ufw_ocr.stdout"
+
+    # =========================================
+    # System Configuration Tests
+    # =========================================
+    - name: Test timezone is set correctly
+      ansible.builtin.command: timedatectl show --property=Timezone --value
+      register: system_timezone
+      changed_when: false
+      failed_when: system_timezone.stdout != "Asia/Tehran"
+
+    # =========================================
+    # Test Summary
+    # =========================================
+    - name: Display test results summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ All tests passed!"
+          - ""
+          - "Docker: {{ docker_version.stdout }}"
+          - "MicroK8s: {{ microk8s_version.stdout_lines[0] }}"
+          - "UFW: Active with required ports open"
+          - "Timezone: {{ system_timezone.stdout }}"
+          - ""
+          - "Kubernetes cluster:"
+          - "{{ kubectl_nodes.stdout_lines }}"
