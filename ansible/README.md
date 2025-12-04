@@ -7,14 +7,14 @@ This directory contains Ansible playbooks and roles for provisioning and configu
 ```text
 ansible/
 ├── inventory/          # Host inventory files
-│   └── hosts.ini       # Main inventory (VPS host)
+│   ├── hosts.ini       # Main inventory (VPS host)
+│   ├── group_vars/     # Variables per group
+│   │   └── all.yml     # Common variables
+│   └── host_vars/      # Variables per host
+│       └── vps-prod.yml # Production VPS variables
 ├── playbooks/          # Ansible playbooks
 │   └── setup-vps.yaml  # Main VPS provisioning playbook
 ├── roles/              # Custom roles (future use)
-├── group_vars/         # Variables per group
-│   └── all.yml         # Common variables
-├── host_vars/          # Variables per host
-│   └── vps-prod.yml    # Production VPS variables
 ├── files/              # Static files
 ├── templates/          # Jinja2 templates
 ├── ansible.cfg         # Ansible configuration
