@@ -1,0 +1,486 @@
+# =============================================================================
+# Fundamental Stack - Default Values
+# =============================================================================
+# This file contains default values for the Fundamental Stack Helm chart.
+# Override these values in values-dev.yaml or values-prod.yaml.
+#
+# For .NET Developers:
+# - Think of this as appsettings.json defaults
+# - Environment-specific overrides work like appsettings.Development.json
+# =============================================================================
+
+# Global settings applied across all components
+global:
+  # Image pull secrets for private registries (use existingSecret pattern)
+  imagePullSecrets: []
+  #  - name: registry-credentials
+  
+  # Storage class for persistent volumes
+  storageClass: ""
+  
+  # Domain configuration
+  domain: "academind.ir"
+
+# =============================================================================
+# Backend Configuration (ASP.NET Core API)
+# =============================================================================
+backend:
+  enabled: true
+  
+  # Number of replicas
+  replicaCount: 2
+  
+  # Image configuration
+  image:
+    repository: registry.academind.ir/fundamental-backend
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion
+    tag: ""
+  
+  # ASP.NET Core environment (Development, Staging, Production)
+  aspnetEnvironment: "Production"
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+  
+  # Container port (ASP.NET default is 8080 in .NET 8+)
+  containerPort: 8080
+  
+  # Resource limits and requests
+  # Start conservative, scale up based on monitoring
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # Pod Disruption Budget for high availability
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 1  # Use either minAvailable OR maxUnavailable
+  
+  # Health probes configuration
+  probes:
+    startup:
+      enabled: true
+      path: /health/startup
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 30
+    liveness:
+      enabled: true
+      path: /health/live
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+  
+  # Security context (2025 best practices)
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 3000
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  
+  podSecurityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  
+  # Node selection and tolerations
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # Additional environment variables
+  extraEnv: []
+  #  - name: CUSTOM_VAR
+  #    value: "custom-value"
+  
+  # Additional environment variables from secrets/configmaps
+  extraEnvFrom: []
+  #  - secretRef:
+  #      name: my-secret
+  
+  # Secrets configuration (existingSecret pattern)
+  secrets:
+    # External secrets (pre-created in cluster)
+    existingSecret: ""
+    # Keys to extract from the secret
+    keys:
+      jwtSecret: "jwt-secret"
+      apiKey: "api-key"
+  
+  # Logging configuration
+  logging:
+    level: "Information"
+    microsoftLevel: "Warning"
+  
+  # CORS configuration
+  cors:
+    enabled: true
+    origins: "*"
+  
+  # Additional application configuration
+  config: {}
+  #  CustomSetting__Key: "value"
+
+# =============================================================================
+# Frontend Configuration (Angular + Nginx)
+# =============================================================================
+frontend:
+  enabled: true
+  
+  replicaCount: 2
+  
+  image:
+    repository: registry.academind.ir/fundamental-frontend
+    pullPolicy: IfNotPresent
+    tag: ""
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+  
+  containerPort: 8080
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  
+  probes:
+    startup:
+      enabled: true
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    liveness:
+      enabled: true
+      path: /
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+  
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 3000
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+  
+  podSecurityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # API base URL for Angular app
+  apiBaseUrl: "/api"
+  
+  # Nginx configuration
+  nginx:
+    # Custom nginx.conf can be provided
+    customConfig: ""
+
+# =============================================================================
+# Database Migration Job
+# =============================================================================
+migrator:
+  enabled: true
+  
+  # Use same image as backend by default
+  image:
+    repository: ""  # defaults to backend.image.repository
+    pullPolicy: IfNotPresent
+    tag: ""  # defaults to backend.image.tag
+  
+  # Custom command for migrations
+  command: []
+  #  - dotnet
+  #  - Fundamental.Infrastructure.Migrations.dll
+  
+  args: []
+  
+  # Resources for migration job
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Job configuration
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 300
+  
+  # Security context
+  securityContext: {}  # defaults to containerSecurityContext
+  podSecurityContext: {}  # defaults to podSecurityContext
+  
+  # Additional environment variables
+  env: []
+  
+  nodeSelector: {}
+  tolerations: []
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  enabled: true
+  
+  className: "nginx"
+  
+  annotations:
+    # TLS with cert-manager
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Force HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # HSTS
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+  
+  hosts:
+    - host: academind.ir
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  
+  tls:
+    - secretName: academind-tls
+      hosts:
+        - academind.ir
+
+# =============================================================================
+# Registry Ingress (for container registry)
+# =============================================================================
+registryIngress:
+  enabled: true
+  
+  className: "nginx"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Allow large image uploads
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # Basic auth for registry
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "registry-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Container Registry"
+  
+  host: registry.academind.ir
+  
+  # Registry service reference (in container-registry namespace)
+  service:
+    name: registry
+    namespace: container-registry
+    port: 5000
+  
+  tls:
+    secretName: registry-tls
+
+# =============================================================================
+# Network Policies
+# =============================================================================
+networkPolicies:
+  enabled: true
+  
+  # Additional egress destinations (e.g., external APIs)
+  additionalEgress: []
+  #  - to:
+  #      - ipBlock:
+  #          cidr: 10.0.0.0/8
+  #    ports:
+  #      - protocol: TCP
+  #        port: 443
+
+# =============================================================================
+# PostgreSQL (Bitnami Chart)
+# =============================================================================
+postgresql:
+  # Enable embedded PostgreSQL
+  # Set to false to use external database
+  enabled: true
+  
+  # Authentication
+  auth:
+    # Use existing secret (recommended for production)
+    existingSecret: ""
+    # Secret keys (if using existingSecret)
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "password"
+      usernameKey: "username"
+      replicationPasswordKey: "replication-password"
+    
+    # If not using existingSecret, these are used to create one
+    # WARNING: Only for development - use existingSecret in production
+    database: "fundamental"
+    username: "fundamental"
+    # password: ""  # Auto-generated if not set
+  
+  # Primary instance configuration
+  primary:
+    # Persistence
+    persistence:
+      enabled: true
+      size: 10Gi
+      # storageClass: ""
+    
+    # Resources
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    
+    # Service
+    service:
+      ports:
+        postgresql: 5432
+
+# External database (when postgresql.enabled = false)
+externalDatabase:
+  host: ""
+  port: 5432
+  database: "fundamental"
+  existingSecret: ""
+  existingSecretPasswordKey: "password"
+
+# =============================================================================
+# Redis (Bitnami Chart)
+# =============================================================================
+redis:
+  # Enable embedded Redis
+  enabled: true
+  
+  # Architecture: standalone or replication
+  architecture: standalone
+  
+  auth:
+    enabled: true
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
+    # password: ""  # Auto-generated if not set
+  
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    
+    service:
+      ports:
+        redis: 6379
+
+# External Redis (when redis.enabled = false)
+externalRedis:
+  host: ""
+  port: 6379
+  existingSecret: ""
+  existingSecretPasswordKey: "password"
+
+# =============================================================================
+# Service Account
+# =============================================================================
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# =============================================================================
+# Additional ConfigMaps and Secrets
+# =============================================================================
+extraConfigMaps: []
+#  - name: my-config
+#    data:
+#      key: value
+
+extraSecrets: []
+#  - name: my-secret
+#    stringData:
+#      key: value

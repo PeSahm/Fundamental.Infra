@@ -1,0 +1,300 @@
+# =============================================================================
+# Production Environment Values
+# =============================================================================
+# Override these values for production environment.
+#
+# Usage:
+#   helm install fundamental . -f values.yaml -f values-prod.yaml
+#
+# For .NET Developers:
+# - This is like appsettings.Production.json
+# - Optimized for production workloads
+#
+# IMPORTANT:
+# - All secrets MUST use existingSecret pattern
+# - Never commit actual passwords/tokens to this file
+# - Create secrets manually or via External Secrets Operator
+# =============================================================================
+
+# Global settings
+global:
+  imagePullSecrets:
+    - name: registry-credentials
+  
+  domain: "academind.ir"
+
+# =============================================================================
+# Backend (Production)
+# =============================================================================
+backend:
+  replicaCount: 3
+  
+  image:
+    repository: registry.academind.ir/fundamental-backend
+    # Tag will be updated by CI/CD via update-tag.yml workflow
+    tag: "1.0.0"
+  
+  aspnetEnvironment: "Production"
+  
+  # Production-grade resources
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  
+  # Enable autoscaling for production
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # Ensure high availability
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  
+  # Production probes (slightly more aggressive)
+  probes:
+    startup:
+      enabled: true
+      path: /health/startup
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 30
+    liveness:
+      enabled: true
+      path: /health/live
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+  
+  # Production environment variables
+  extraEnv:
+    - name: ASPNETCORE_DETAILEDERRORS
+      value: "false"
+    - name: Logging__LogLevel__Default
+      value: "Warning"
+    - name: Logging__LogLevel__Microsoft
+      value: "Warning"
+  
+  # Use existing secrets (created via Terraform/External Secrets)
+  secrets:
+    existingSecret: "fundamental-backend-secrets"
+    keys:
+      jwtSecret: "jwt-secret"
+      apiKey: "api-key"
+  
+  # Spread pods across nodes for HA
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: backend
+            topologyKey: kubernetes.io/hostname
+
+# =============================================================================
+# Frontend (Production)
+# =============================================================================
+frontend:
+  replicaCount: 2
+  
+  image:
+    repository: registry.academind.ir/fundamental-frontend
+    tag: "1.0.0"
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  
+  apiBaseUrl: "/api"
+  
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: frontend
+            topologyKey: kubernetes.io/hostname
+
+# =============================================================================
+# Migrator (Production)
+# =============================================================================
+migrator:
+  enabled: true
+  
+  image:
+    tag: "1.0.0"
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Production job settings
+  backoffLimit: 5
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 600
+
+# =============================================================================
+# Ingress (Production)
+# =============================================================================
+ingress:
+  enabled: true
+  className: "nginx"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # HSTS for production
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/hsts-preload: "true"
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+  
+  hosts:
+    - host: academind.ir
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  
+  tls:
+    - secretName: academind-tls
+      hosts:
+        - academind.ir
+
+# =============================================================================
+# Registry Ingress (Production)
+# =============================================================================
+registryIngress:
+  enabled: true
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "registry-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Container Registry"
+  
+  host: registry.academind.ir
+  
+  service:
+    name: registry
+    namespace: container-registry
+    port: 5000
+  
+  tls:
+    secretName: registry-tls
+
+# =============================================================================
+# PostgreSQL (Production)
+# =============================================================================
+postgresql:
+  enabled: true
+  
+  auth:
+    # MUST use existing secret in production
+    existingSecret: "postgresql-credentials"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "password"
+      usernameKey: "username"
+    database: "fundamental"
+    username: "fundamental"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      # Use fast storage class if available
+      # storageClass: "fast-ssd"
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# =============================================================================
+# Redis (Production)
+# =============================================================================
+redis:
+  enabled: true
+  architecture: standalone
+  
+  auth:
+    enabled: true
+    existingSecret: "redis-credentials"
+    existingSecretPasswordKey: "redis-password"
+  
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+# =============================================================================
+# Network Policies (Production)
+# =============================================================================
+networkPolicies:
+  enabled: true
+
+# =============================================================================
+# Service Account (Production)
+# =============================================================================
+serviceAccount:
+  create: true
+  name: "fundamental-prod-sa"
+  annotations: {}

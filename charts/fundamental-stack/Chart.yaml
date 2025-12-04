@@ -1,0 +1,102 @@
+# =============================================================================
+# Fundamental Stack - Production-Grade Helm Chart
+# =============================================================================
+# This chart deploys the complete Fundamental application stack:
+# - ASP.NET Core Backend API
+# - Angular Frontend
+# - PostgreSQL Database (via Bitnami subchart)
+# - Redis Cache (via Bitnami subchart)
+#
+# Follows Kubernetes 2025 Best Practices:
+# - Security-first design (non-root, read-only filesystem)
+# - Zero-downtime deployments (probes, PodDisruptionBudgets)
+# - Network isolation (NetworkPolicies)
+# - GitOps-ready (ArgoCD compatible)
+# =============================================================================
+
+apiVersion: v2
+name: fundamental-stack
+description: |
+  A production-grade Helm chart for deploying the Fundamental application stack.
+  Includes ASP.NET Core backend, Angular frontend, PostgreSQL, and Redis.
+
+type: application
+
+# Chart version - follows SemVer
+# Increment for chart changes (templates, values structure)
+version: 1.0.0
+
+# Application version - the default app version deployed
+# This can be overridden per environment in values files
+appVersion: "1.0.0"
+
+# Kubernetes version requirements
+kubeVersion: ">=1.26.0-0"
+
+# Chart maintainers
+maintainers:
+  - name: Fundamental Team
+    email: team@academind.ir
+    url: https://academind.ir
+
+# Keywords for chart discovery
+keywords:
+  - fundamental
+  - dotnet
+  - angular
+  - fullstack
+  - postgresql
+  - redis
+  - microservices
+
+# Home and source URLs
+home: https://academind.ir
+sources:
+  - https://github.com/PeSahm/Fundamental.Infra
+  - https://github.com/PeSahm/Fundamental.Backend
+  - https://github.com/PeSahm/Fundamental.FrontEnd
+
+# Chart icon (optional)
+icon: https://academind.ir/assets/logo.png
+
+# Annotations for additional metadata
+annotations:
+  # ArgoCD annotations
+  argocd.argoproj.io/sync-wave: "0"
+  
+  # Artifact Hub annotations (if publishing)
+  artifacthub.io/license: MIT
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/signKey: |
+    fingerprint: ""
+    url: ""
+
+# =============================================================================
+# Dependencies - Using Bitnami OCI Charts (2025 Standard)
+# =============================================================================
+# OCI registries are the recommended approach for Helm 3.8+
+# Benefits: Better security, immutability, standardized distribution
+# =============================================================================
+
+dependencies:
+  # PostgreSQL Database
+  # Docs: https://github.com/bitnami/charts/tree/main/bitnami/postgresql
+  - name: postgresql
+    version: "16.4.1"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: postgresql.enabled
+    alias: postgresql
+    tags:
+      - database
+      - postgresql
+
+  # Redis Cache
+  # Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
+  - name: redis
+    version: "20.6.2"
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: redis.enabled
+    alias: redis
+    tags:
+      - cache
+      - redis

@@ -1,0 +1,227 @@
+# =============================================================================
+# Development Environment Values
+# =============================================================================
+# Override these values for development environment.
+#
+# Usage:
+#   helm install fundamental . -f values.yaml -f values-dev.yaml
+#
+# For .NET Developers:
+# - This is like appsettings.Development.json
+# - Overrides default values for dev environment
+# =============================================================================
+
+# Global settings
+global:
+  imagePullSecrets:
+    - name: registry-credentials
+  
+  domain: "dev.academind.ir"
+
+# =============================================================================
+# Backend (Development)
+# =============================================================================
+backend:
+  replicaCount: 1
+  
+  image:
+    repository: registry.academind.ir/fundamental-backend
+    tag: "dev-latest"
+  
+  # Development environment
+  aspnetEnvironment: "Development"
+  
+  # Lower resources for dev
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # No autoscaling in dev
+  autoscaling:
+    enabled: false
+  
+  # No PDB needed for single replica
+  podDisruptionBudget:
+    enabled: false
+  
+  # Additional dev environment variables
+  extraEnv:
+    - name: ASPNETCORE_DETAILEDERRORS
+      value: "true"
+    - name: Logging__LogLevel__Default
+      value: "Debug"
+  
+  # Use existing secret for sensitive data
+  secrets:
+    existingSecret: "fundamental-backend-secrets"
+    keys:
+      jwtSecret: "jwt-secret"
+      apiKey: "api-key"
+
+# =============================================================================
+# Frontend (Development)
+# =============================================================================
+frontend:
+  replicaCount: 1
+  
+  image:
+    repository: registry.academind.ir/fundamental-frontend
+    tag: "dev-latest"
+  
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  autoscaling:
+    enabled: false
+  
+  podDisruptionBudget:
+    enabled: false
+  
+  # Dev API endpoint
+  apiBaseUrl: "/api"
+
+# =============================================================================
+# Migrator (Development)
+# =============================================================================
+migrator:
+  enabled: true
+  
+  # Use dev backend image for migrations
+  image:
+    tag: "dev-latest"
+  
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# =============================================================================
+# Ingress (Development)
+# =============================================================================
+ingress:
+  enabled: true
+  className: "nginx"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  
+  hosts:
+    - host: dev.academind.ir
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  
+  tls:
+    - secretName: dev-academind-tls
+      hosts:
+        - dev.academind.ir
+
+# =============================================================================
+# Registry Ingress (Development)
+# =============================================================================
+registryIngress:
+  enabled: true
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "registry-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Container Registry"
+  
+  host: registry.academind.ir
+  
+  service:
+    name: registry
+    namespace: container-registry
+    port: 5000
+  
+  tls:
+    secretName: registry-tls
+
+# =============================================================================
+# PostgreSQL (Development)
+# =============================================================================
+postgresql:
+  enabled: true
+  
+  auth:
+    # Use existing secret in dev
+    existingSecret: "postgresql-credentials"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "password"
+      usernameKey: "username"
+    database: "fundamental_dev"
+    username: "fundamental"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    
+    resources:
+      limits:
+        cpu: 300m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+# =============================================================================
+# Redis (Development)
+# =============================================================================
+redis:
+  enabled: true
+  architecture: standalone
+  
+  auth:
+    enabled: true
+    existingSecret: "redis-credentials"
+    existingSecretPasswordKey: "redis-password"
+  
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+    
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 25m
+        memory: 64Mi
+
+# =============================================================================
+# Network Policies (Development)
+# =============================================================================
+networkPolicies:
+  # Enable network policies even in dev for testing
+  enabled: true
+
+# =============================================================================
+# Service Account (Development)
+# =============================================================================
+serviceAccount:
+  create: true
+  name: "fundamental-dev-sa"
+  annotations: {}
