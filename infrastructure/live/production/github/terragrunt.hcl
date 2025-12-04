@@ -43,6 +43,10 @@ dependency "dns" {
 # Module Inputs
 # -----------------------------------------------------------------------------
 inputs = {
+  # GitHub Token from environment variable
+  # This token is used to configure repositories, environments, and secrets
+  github_token = get_env("GITHUB_TOKEN", "")
+  
   # GitHub owner (inherited from root)
   # github_owner = "PeSahm"
   

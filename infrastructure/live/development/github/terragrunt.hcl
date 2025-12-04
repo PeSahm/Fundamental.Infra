@@ -42,6 +42,9 @@ dependency "dns" {
 # Module Inputs
 # -----------------------------------------------------------------------------
 inputs = {
+  # GitHub Token from environment
+  github_token = get_env("GITHUB_TOKEN", "")
+  
   # SSH Private Key for deployment
   ssh_private_key = get_env("SSH_PRIVATE_KEY", "")
   
