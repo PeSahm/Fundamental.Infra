@@ -1,0 +1,185 @@
+# =============================================================================
+# Update Image Tag Workflow
+# =============================================================================
+# This workflow is triggered by repository_dispatch events to update image tags
+# in Helm values files. This enables GitOps-style deployments with ArgoCD.
+#
+# How it works:
+# 1. CI builds and pushes image to registry (in Backend/Frontend repos)
+# 2. CI sends repository_dispatch event to this repo
+# 3. This workflow updates the image tag in values files
+# 4. ArgoCD detects the change and syncs the deployment
+#
+# Trigger with GitHub CLI:
+#   gh api repos/OWNER/Fundamental.Infra/dispatches \
+#     --method POST \
+#     --field event_type=update-image-tag \
+#     --field "client_payload[component]=backend" \
+#     --field "client_payload[tag]=1.2.3" \
+#     --field "client_payload[environment]=prod"
+# =============================================================================
+
+name: Update Image Tag
+
+on:
+  repository_dispatch:
+    types: [update-image-tag]
+
+env:
+  # Supported components and their values file paths
+  BACKEND_VALUES_KEY: "backend.image.tag"
+  FRONTEND_VALUES_KEY: "frontend.image.tag"
+  MIGRATOR_VALUES_KEY: "migrator.image.tag"
+
+jobs:
+  update-tag:
+    name: Update Image Tag
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Validate Input
+        run: |
+          # Validate required inputs
+          if [ -z "${{ github.event.client_payload.component }}" ]; then
+            echo "Error: component is required"
+            exit 1
+          fi
+          
+          if [ -z "${{ github.event.client_payload.tag }}" ]; then
+            echo "Error: tag is required"
+            exit 1
+          fi
+          
+          if [ -z "${{ github.event.client_payload.environment }}" ]; then
+            echo "Error: environment is required"
+            exit 1
+          fi
+          
+          # Validate component
+          COMPONENT="${{ github.event.client_payload.component }}"
+          if [[ ! "$COMPONENT" =~ ^(backend|frontend)$ ]]; then
+            echo "Error: Invalid component. Must be 'backend' or 'frontend'"
+            exit 1
+          fi
+          
+          # Validate environment
+          ENV="${{ github.event.client_payload.environment }}"
+          if [[ ! "$ENV" =~ ^(dev|prod)$ ]]; then
+            echo "Error: Invalid environment. Must be 'dev' or 'prod'"
+            exit 1
+          fi
+          
+          echo "✅ Input validation passed"
+          echo "Component: $COMPONENT"
+          echo "Tag: ${{ github.event.client_payload.tag }}"
+          echo "Environment: $ENV"
+      
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup yq
+        uses: mikefarah/yq@v4
+      
+      - name: Update Image Tag
+        id: update
+        run: |
+          COMPONENT="${{ github.event.client_payload.component }}"
+          TAG="${{ github.event.client_payload.tag }}"
+          ENV="${{ github.event.client_payload.environment }}"
+          
+          # Determine values file
+          VALUES_FILE="charts/fundamental-stack/values-${ENV}.yaml"
+          
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "Error: Values file not found: $VALUES_FILE"
+            exit 1
+          fi
+          
+          echo "Updating $VALUES_FILE..."
+          
+          # Update the appropriate component tag
+          case "$COMPONENT" in
+            backend)
+              yq -i ".backend.image.tag = \"$TAG\"" "$VALUES_FILE"
+              # Also update migrator tag (uses same image)
+              yq -i ".migrator.image.tag = \"$TAG\"" "$VALUES_FILE"
+              ;;
+            frontend)
+              yq -i ".frontend.image.tag = \"$TAG\"" "$VALUES_FILE"
+              ;;
+          esac
+          
+          # Output the change for debugging
+          echo "Updated values:"
+          cat "$VALUES_FILE"
+          
+          # Set outputs
+          echo "values_file=$VALUES_FILE" >> $GITHUB_OUTPUT
+          echo "component=$COMPONENT" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+      
+      - name: Commit and Push
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          COMPONENT="${{ steps.update.outputs.component }}"
+          TAG="${{ steps.update.outputs.tag }}"
+          ENV="${{ steps.update.outputs.environment }}"
+          VALUES_FILE="${{ steps.update.outputs.values_file }}"
+          
+          # Check if there are changes
+          if git diff --quiet "$VALUES_FILE"; then
+            echo "No changes detected, skipping commit"
+            exit 0
+          fi
+          
+          # Create commit message
+          COMMIT_MSG="chore($ENV): Update $COMPONENT image tag to $TAG"
+          COMMIT_BODY="Automated update triggered by CI/CD pipeline.
+
+Component: $COMPONENT
+Tag: $TAG
+Environment: $ENV
+Triggered by: ${{ github.event.sender.login }}"
+          
+          # Stage and commit
+          git add "$VALUES_FILE"
+          git commit -m "$COMMIT_MSG" -m "$COMMIT_BODY"
+          
+          # Push changes
+          git push origin main
+          
+          echo "✅ Successfully updated $COMPONENT to $TAG in $ENV environment"
+      
+      - name: Create Summary
+        run: |
+          COMPONENT="${{ steps.update.outputs.component }}"
+          TAG="${{ steps.update.outputs.tag }}"
+          ENV="${{ steps.update.outputs.environment }}"
+          
+          echo "## Image Tag Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | \`$COMPONENT\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`$TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`$ENV\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Values File | \`charts/fundamental-stack/values-${ENV}.yaml\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ArgoCD will automatically detect this change and sync the deployment." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Monitor the deployment:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "kubectl -n fundamental-${ENV} get pods -l app.kubernetes.io/component=${COMPONENT} -w" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
