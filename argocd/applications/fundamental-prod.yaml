@@ -1,0 +1,126 @@
+# =============================================================================
+# ArgoCD Application - Fundamental Production
+# =============================================================================
+# This deploys the Fundamental stack to the production environment.
+#
+# IMPORTANT Production Considerations:
+# - Manual sync is required (no automated sync)
+# - Sync windows may be enforced
+# - Notifications are sent to production channels
+# - Rollback is always available
+#
+# For .NET Developers:
+# - This is like your production release pipeline
+# - Requires explicit approval/sync for deployments
+# - Full audit trail in ArgoCD
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fundamental-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: fundamental
+    app.kubernetes.io/instance: fundamental-prod
+    app.kubernetes.io/component: application
+    app.kubernetes.io/part-of: fundamental-stack
+    environment: production
+  # Finalizer for cascade delete
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Notifications for production
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: fundamental-production
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: fundamental-production-alerts
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: fundamental-production-alerts
+    # Add PagerDuty/OpsGenie for critical alerts
+    # notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: fundamental-oncall
+spec:
+  # Reference to the project
+  project: fundamental
+  
+  # Source repository and path
+  source:
+    # Repository URL - UPDATE THIS to your actual repo
+    repoURL: "https://github.com/YOUR_ORG/Fundamental.Infra.git"
+    
+    # Target revision (branch, tag, or commit)
+    # For production, you might want to use a specific tag
+    targetRevision: HEAD
+    
+    # Path to Helm chart
+    path: charts/fundamental-stack
+    
+    # Helm configuration
+    helm:
+      # Values files to use (in order of precedence)
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+      
+      # Release name
+      releaseName: fundamental
+      
+      # Skip CRDs
+      skipCrds: false
+  
+  # Destination cluster and namespace
+  destination:
+    # In-cluster deployment
+    server: "https://kubernetes.default.svc"
+    
+    # Target namespace
+    namespace: fundamental-prod
+  
+  # Sync policy - PRODUCTION SPECIFIC
+  syncPolicy:
+    # NO automated sync for production - require manual approval
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    
+    # Sync options
+    syncOptions:
+      # Create namespace if it doesn't exist
+      - CreateNamespace=true
+      # Validate resources before applying
+      - Validate=true
+      # Prune last to ensure new resources are ready
+      - PruneLast=true
+      # Apply out-of-sync resources only
+      - ApplyOutOfSyncOnly=true
+      # Server-side apply
+      - ServerSideApply=true
+      # Respect ignore differences
+      - RespectIgnoreDifferences=true
+    
+    # Retry policy
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  
+  # Ignore differences in certain fields
+  ignoreDifferences:
+    # Ignore replica count changes from HPA
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    
+    # Ignore webhook CA bundle injections
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    
+    # Ignore managed fields
+    - group: "*"
+      kind: "*"
+      managedFieldsManagers:
+        - kube-controller-manager
+  
+  # Revision history limit
+  revisionHistoryLimit: 10

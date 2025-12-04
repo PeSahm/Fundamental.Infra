@@ -1,0 +1,130 @@
+# =============================================================================
+# ArgoCD Application - Fundamental Development
+# =============================================================================
+# This deploys the Fundamental stack to the development environment.
+#
+# For .NET Developers:
+# - Think of this as a "deployment configuration" in Azure DevOps
+# - Points to the Helm chart and values files
+# - ArgoCD watches for changes and syncs automatically
+#
+# GitOps Flow:
+# 1. CI builds and pushes image to registry
+# 2. CI triggers update-tag.yml workflow
+# 3. values-dev.yaml is updated with new tag
+# 4. ArgoCD detects change and syncs
+# 5. Kubernetes rolls out new deployment
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fundamental-dev
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: fundamental
+    app.kubernetes.io/instance: fundamental-dev
+    app.kubernetes.io/component: application
+    app.kubernetes.io/part-of: fundamental-stack
+    environment: development
+  # Finalizer for cascade delete
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Notifications (if ArgoCD Notifications is installed)
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: fundamental-deployments
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: fundamental-alerts
+spec:
+  # Reference to the project
+  project: fundamental
+  
+  # Source repository and path
+  source:
+    # Repository URL - UPDATE THIS to your actual repo
+    repoURL: "https://github.com/YOUR_ORG/Fundamental.Infra.git"
+    
+    # Target revision (branch, tag, or commit)
+    targetRevision: HEAD
+    
+    # Path to Helm chart
+    path: charts/fundamental-stack
+    
+    # Helm configuration
+    helm:
+      # Values files to use (in order of precedence)
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+      
+      # Release name
+      releaseName: fundamental
+      
+      # Skip CRDs (if any) - we handle them separately
+      skipCrds: false
+      
+      # Helm parameters (override specific values)
+      # parameters:
+      #   - name: backend.replicaCount
+      #     value: "1"
+  
+  # Destination cluster and namespace
+  destination:
+    # In-cluster deployment
+    server: "https://kubernetes.default.svc"
+    
+    # Target namespace
+    namespace: fundamental-dev
+  
+  # Sync policy
+  syncPolicy:
+    # Automated sync - ArgoCD will auto-sync on changes
+    automated:
+      # Auto-prune deleted resources
+      prune: true
+      # Self-heal if manual changes are made
+      selfHeal: true
+      # Allow empty resources (for initial deployment)
+      allowEmpty: false
+    
+    # Sync options
+    syncOptions:
+      # Create namespace if it doesn't exist
+      - CreateNamespace=true
+      # Validate resources before applying
+      - Validate=true
+      # Replace resources that have changes
+      - PruneLast=true
+      # Apply out-of-sync resources only
+      - ApplyOutOfSyncOnly=true
+      # Server-side apply (recommended for K8s 1.22+)
+      - ServerSideApply=true
+    
+    # Retry policy
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Ignore differences in certain fields (reduce noise)
+  ignoreDifferences:
+    # Ignore replica count changes from HPA
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    
+    # Ignore webhook CA bundle injections
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    
+    # Ignore managed fields (metadata noise)
+    - group: "*"
+      kind: "*"
+      managedFieldsManagers:
+        - kube-controller-manager
+  
+  # Resource health customization
+  # revisionHistoryLimit: 10

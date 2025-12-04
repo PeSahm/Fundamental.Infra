@@ -1,0 +1,119 @@
+# =============================================================================
+# ArgoCD Project - Fundamental
+# =============================================================================
+# This project groups all Fundamental applications and defines access controls.
+#
+# For .NET Developers:
+# - Think of this as a "namespace" or "solution" for organizing apps
+# - Defines what repos, clusters, and namespaces apps can access
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: fundamental
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: fundamental
+    app.kubernetes.io/part-of: fundamental-stack
+  # Finalizer prevents accidental deletion
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project description
+  description: "Fundamental application stack (Backend, Frontend, Database)"
+  
+  # Source repositories allowed
+  sourceRepos:
+    - "https://github.com/*/Fundamental.Infra.git"
+    - "https://github.com/*/Fundamental.Infra"
+    # Add your specific repo URL
+    - "*"
+  
+  # Destination clusters and namespaces
+  destinations:
+    # Development environment
+    - namespace: "fundamental-dev"
+      server: "https://kubernetes.default.svc"
+      name: "in-cluster"
+    
+    # Production environment
+    - namespace: "fundamental-prod"
+      server: "https://kubernetes.default.svc"
+      name: "in-cluster"
+  
+  # Allowed cluster resources
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: networking.k8s.io
+      kind: IngressClass
+  
+  # Allowed namespace resources
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+    - group: batch
+      kind: "*"
+    - group: autoscaling
+      kind: "*"
+    - group: policy
+      kind: "*"
+  
+  # Deny resources (for safety)
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+  
+  # Roles for this project
+  roles:
+    # Admin role - full access
+    - name: admin
+      description: "Admin access to all applications in Fundamental project"
+      policies:
+        - p, proj:fundamental:admin, applications, *, fundamental/*, allow
+        - p, proj:fundamental:admin, repositories, *, fundamental/*, allow
+      groups:
+        - fundamental-admins
+    
+    # Developer role - read access + sync
+    - name: developer
+      description: "Developer access - can sync and view applications"
+      policies:
+        - p, proj:fundamental:developer, applications, get, fundamental/*, allow
+        - p, proj:fundamental:developer, applications, sync, fundamental/*, allow
+        - p, proj:fundamental:developer, logs, get, fundamental/*, allow
+      groups:
+        - fundamental-developers
+    
+    # Read-only role
+    - name: readonly
+      description: "Read-only access to applications"
+      policies:
+        - p, proj:fundamental:readonly, applications, get, fundamental/*, allow
+        - p, proj:fundamental:readonly, logs, get, fundamental/*, allow
+      groups:
+        - fundamental-viewers
+  
+  # Sync windows (optional - for controlled deployments)
+  # syncWindows:
+  #   # Production deployment window
+  #   - kind: allow
+  #     schedule: "0 6-18 * * 1-5"
+  #     duration: 12h
+  #     applications:
+  #       - "fundamental-prod"
+  #     namespaces:
+  #       - "fundamental-prod"
+  #     clusters:
+  #       - "in-cluster"
+  
+  # Orphaned resources monitoring
+  orphanedResources:
+    warn: true
+    ignore: []
