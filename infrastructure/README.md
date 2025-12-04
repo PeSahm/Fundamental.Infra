@@ -182,28 +182,65 @@ sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(l
 sudo apt-get update && sudo apt-get install terraform
 
 # Install Terragrunt
-wget https://github.com/gruntwork-io/terragrunt/releases/download/v0.54.0/terragrunt_linux_amd64
+wget https://github.com/gruntwork-io/terragrunt/releases/download/v0.69.10/terragrunt_linux_amd64
 chmod +x terragrunt_linux_amd64
 sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+
+# Install CLI tools for credential management
+gh auth login              # GitHub CLI (for GITHUB_TOKEN)
+sudo npm install -g wrangler  # Cloudflare CLI (optional)
+```
+
+### Quick Setup with Script
+
+Use the provided setup script to configure environment variables:
+
+```bash
+# Interactive setup (prompts for credentials)
+source scripts/setup-env.sh
+
+# Or manually create .env file
+cp infrastructure/.env.example infrastructure/.env
+# Edit infrastructure/.env with your values
+source infrastructure/.env
 ```
 
 ### Required Environment Variables
 
-Create a `.env` file or export these variables:
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `CLOUDFLARE_API_TOKEN` | [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) | Create with "Edit zone DNS" template |
+| `CLOUDFLARE_ZONE_ID` | Cloudflare Dashboard → academind.ir → Overview | Right sidebar |
+| `GITHUB_TOKEN` | `gh auth token` | Auto-filled if using gh CLI |
+| `REGISTRY_USER` | Your choice | Container registry username |
+| `REGISTRY_PASSWORD` | Your choice | Container registry password |
+| `SSH_PRIVATE_KEY` | `cat ~/.ssh/id_rsa \| base64 -w 0` | Base64 encoded SSH key |
+
+### Getting Cloudflare Credentials
 
 ```bash
-# Cloudflare API Token (with Zone:DNS:Edit permissions)
-export CLOUDFLARE_API_TOKEN="your-cloudflare-api-token"
+# Option 1: Use Cloudflare Dashboard
+# 1. Go to: https://dash.cloudflare.com/profile/api-tokens
+# 2. Create Token → "Edit zone DNS" template
+# 3. Zone Resources: Include → Specific zone → academind.ir
+# 4. Copy the token
 
-# Cloudflare Zone ID for academind.ir
-export CLOUDFLARE_ZONE_ID="your-zone-id"
-
-# GitHub Personal Access Token (with repo, admin:org, admin:repo_hook permissions)
-export GITHUB_TOKEN="your-github-pat"
-
-# SSH Private Key for deployment (base64 encoded for safety)
-export SSH_PRIVATE_KEY=$(cat ~/.ssh/id_rsa | base64 -w 0)
+# Option 2: Use Wrangler CLI (interactive)
+wrangler login
+wrangler whoami
 ```
+
+### Getting GitHub Token
+
+```bash
+# If gh CLI is installed and authenticated:
+export GITHUB_TOKEN=$(gh auth token)
+
+# Or create a Personal Access Token:
+# https://github.com/settings/tokens
+# Scopes needed: repo, admin:repo_hook
+```
+
 
 ## 📋 Usage
 
