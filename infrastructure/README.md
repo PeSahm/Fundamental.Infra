@@ -309,63 +309,149 @@ export GITHUB_TOKEN=$(gh auth token)
 
 ## 📋 Usage
 
-### Initialize and Plan
+### Quick Start (Complete Workflow)
 
 ```bash
-# ============================================
-# PRODUCTION ENVIRONMENT
-# ============================================
-cd infrastructure/live/production
+# 1. Setup environment variables (run from repo root)
+source scripts/setup-env.sh
 
-# Apply all production modules at once
-terragrunt run-all init
-terragrunt run-all plan
-terragrunt run-all apply
-
-# Or apply individually
-cd dns && terragrunt apply
-cd ../github && terragrunt apply
-
-# ============================================
-# DEVELOPMENT ENVIRONMENT
-# ============================================
+# 2. Apply development environment
 cd infrastructure/live/development
+terragrunt run-all init
+terragrunt run-all plan    # Review changes first!
+terragrunt run-all apply --terragrunt-non-interactive
 
-# Apply all development modules at once
+# 3. Apply production environment
+cd ../production
 terragrunt run-all init
 terragrunt run-all plan
-terragrunt run-all apply
-
-# Or apply individually
-cd dns && terragrunt apply
-cd ../github && terragrunt apply
+terragrunt run-all apply --terragrunt-non-interactive
 ```
 
+### Step-by-Step Guide
 
-### Apply Changes
+#### Step 1: Load Environment Variables
+
+**Always source the .env file before running Terragrunt commands:**
 
 ```bash
-# Apply all production infrastructure
-cd infrastructure/live/production
+# Option A: Use setup script (first time or refresh)
+source scripts/setup-env.sh
+
+# Option B: Source existing .env (if already configured)
+source infrastructure/.env
+```
+
+#### Step 2: Initialize Modules
+
+```bash
+cd infrastructure/live/development  # or production
+
+# Initialize all modules (downloads providers)
+terragrunt run-all init
+```
+
+#### Step 3: Preview Changes (Plan)
+
+```bash
+# Always review before applying!
+terragrunt run-all plan
+```
+
+**What to look for:**
+- `+ create` = New resource will be created
+- `~ update in-place` = Existing resource will be modified
+- `- destroy` = Resource will be deleted
+
+#### Step 4: Apply Changes
+
+```bash
+# Interactive (asks for confirmation)
 terragrunt run-all apply
 
-# Or apply individually
-cd dns && terragrunt apply
-cd ../github && terragrunt apply
+# Non-interactive (for CI/CD or when you're sure)
+terragrunt run-all apply --terragrunt-non-interactive
 ```
 
 ### Import Existing Resources
 
-If resources already exist, import them first:
+If resources already exist (e.g., GitHub repos), you must **import** them first:
 
 ```bash
-# Import existing DNS records
-cd infrastructure/live/production/dns
-terragrunt import 'cloudflare_record.records["root"]' <zone_id>/<record_id>
+# Import GitHub repositories (required if repos already exist!)
+cd infrastructure/live/development/github
 
-# Import existing GitHub repos
-cd infrastructure/live/production/github
 terragrunt import 'github_repository.repos["Fundamental.Backend"]' Fundamental.Backend
+terragrunt import 'github_repository.repos["Fundamental.FrontEnd"]' Fundamental.FrontEnd
+terragrunt import 'github_repository.repos["Fundamental.Infra"]' Fundamental.Infra
+
+# Then apply will work without "already exists" errors
+terragrunt apply
+```
+
+```bash
+# Import existing DNS records (if they exist in Cloudflare)
+cd infrastructure/live/production/dns
+
+# Get record IDs from Cloudflare dashboard or API
+terragrunt import 'cloudflare_record.records["root"]' <zone_id>/<record_id>
+terragrunt import 'cloudflare_record.records["api"]' <zone_id>/<record_id>
+```
+
+### Environment-Specific Commands
+
+```bash
+# ============================================
+# DEVELOPMENT ENVIRONMENT
+# ============================================
+source infrastructure/.env
+cd infrastructure/live/development
+
+terragrunt run-all init
+terragrunt run-all plan
+terragrunt run-all apply --terragrunt-non-interactive
+
+# Creates: dev.academind.ir, dev-api.academind.ir, etc.
+# Configures: GitHub 'dev' environment + secrets
+
+# ============================================
+# PRODUCTION ENVIRONMENT  
+# ============================================
+source infrastructure/.env
+cd infrastructure/live/production
+
+terragrunt run-all init
+terragrunt run-all plan
+terragrunt run-all apply --terragrunt-non-interactive
+
+# Creates: academind.ir, www, api, argocd, registry
+# Configures: GitHub 'production' environment + secrets
+```
+
+### Apply Individual Modules
+
+```bash
+# Apply only DNS changes
+cd infrastructure/live/development/dns
+terragrunt apply
+
+# Apply only GitHub changes
+cd infrastructure/live/development/github
+terragrunt apply
+```
+
+### View Current State
+
+```bash
+# List all resources Terraform manages
+cd infrastructure/live/development/github
+terragrunt state list
+
+# Show details of a specific resource
+terragrunt state show 'github_repository.repos["Fundamental.Backend"]'
+
+# Show all outputs
+terragrunt output
 ```
 
 ## 🔐 Security Notes
