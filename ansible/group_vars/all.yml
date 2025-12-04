@@ -29,6 +29,8 @@ ufw_allowed_ports:
   - { port: 80, proto: tcp, comment: "HTTP" }
   - { port: 443, proto: tcp, comment: "HTTPS" }
   - { port: 16443, proto: tcp, comment: "MicroK8s API Server" }
+  - { port: 18080, proto: tcp, comment: "ocr" }
+
 
 # MicroK8s Configuration
 microk8s_version: "1.28/stable"
