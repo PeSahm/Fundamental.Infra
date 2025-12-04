@@ -1,0 +1,114 @@
+{{/*
+=============================================================================
+Application Ingress
+=============================================================================
+Routes external traffic to Frontend and Backend:
+- academind.ir/ → Frontend
+- academind.ir/api → Backend
+
+Supports:
+- TLS termination (cert-manager)
+- Path-based routing
+- MicroK8s nginx ingress controller
+=============================================================================
+*/}}
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+  annotations:
+    # Ingress class
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | default "nginx" | quote }}
+    
+    # TLS configuration with cert-manager
+    {{- if .Values.ingress.tls.enabled }}
+    {{- if .Values.ingress.tls.certManager.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.certManager.clusterIssuer | default "letsencrypt-prod" | quote }}
+    {{- end }}
+    {{- end }}
+    
+    # Nginx-specific annotations
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.ingress.annotations.proxyBodySize | default "100m" | quote }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ .Values.ingress.annotations.proxyReadTimeout | default "60" | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ .Values.ingress.annotations.proxySendTimeout | default "60" | quote }}
+    
+    # Backend routing - strip /api prefix
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    
+    # SSL redirect
+    {{- if .Values.ingress.tls.enabled }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    {{- end }}
+    
+    # CORS headers (if needed)
+    {{- if .Values.ingress.cors.enabled }}
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: {{ .Values.ingress.cors.allowOrigin | default "*" | quote }}
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    {{- end }}
+    
+    # Additional custom annotations
+    {{- with .Values.ingress.annotations.custom }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+        {{- with .Values.ingress.additionalHosts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "fundamental-stack.fullname" .)) }}
+  {{- end }}
+  
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # Backend API routes
+          {{- if .Values.backend.enabled }}
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "fundamental-stack.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port | default 80 }}
+          {{- end }}
+          
+          # Frontend routes (catch-all)
+          {{- if .Values.frontend.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "fundamental-stack.frontend.fullname" . }}
+                port:
+                  number: {{ .Values.frontend.service.port | default 80 }}
+          {{- end }}
+    
+    # Additional hosts (e.g., www subdomain)
+    {{- range .Values.ingress.additionalHosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          {{- if $.Values.frontend.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "fundamental-stack.frontend.fullname" $ }}
+                port:
+                  number: {{ $.Values.frontend.service.port | default 80 }}
+          {{- end }}
+    {{- end }}
+{{- end }}
