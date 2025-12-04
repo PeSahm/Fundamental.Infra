@@ -1,0 +1,166 @@
+{{/*
+=============================================================================
+Frontend Deployment - Angular Application (Nginx)
+=============================================================================
+Production-grade deployment with:
+- Security contexts (non-root, read-only filesystem)
+- All three probes (startup, liveness, readiness)
+- Resource limits for QoS
+- Nginx configuration for SPA routing
+=============================================================================
+*/}}
+{{- if .Values.frontend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fundamental-stack.frontend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.frontend.labels" . | nindent 4 }}
+  {{- with .Values.frontend.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.frontend.autoscaling.enabled }}
+  replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
+  
+  # Deployment strategy for zero-downtime updates
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  
+  minReadySeconds: {{ .Values.frontend.minReadySeconds | default 5 }}
+  revisionHistoryLimit: {{ .Values.frontend.revisionHistoryLimit | default 5 }}
+  
+  selector:
+    matchLabels:
+      {{- include "fundamental-stack.frontend.selectorLabels" . | nindent 6 }}
+  
+  template:
+    metadata:
+      labels:
+        {{- include "fundamental-stack.frontend.selectorLabels" . | nindent 8 }}
+        # Network policy selector
+        fundamental.io/network-access: "frontend"
+      annotations:
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/configmap-frontend-nginx.yaml") . | sha256sum }}
+        {{- with .Values.frontend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    
+    spec:
+      serviceAccountName: {{ include "fundamental-stack.serviceAccountName" . }}
+      
+      securityContext:
+        {{- if .Values.frontend.podSecurityContext }}
+        {{- toYaml .Values.frontend.podSecurityContext | nindent 8 }}
+        {{- else }}
+        {{- include "fundamental-stack.podSecurityContext" . | nindent 8 }}
+        {{- end }}
+      
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          
+          securityContext:
+            {{- if .Values.frontend.securityContext }}
+            {{- toYaml .Values.frontend.securityContext | nindent 12 }}
+            {{- else }}
+            {{- include "fundamental-stack.containerSecurityContext" . | nindent 12 }}
+            {{- end }}
+          
+          ports:
+            - name: http
+              containerPort: {{ .Values.frontend.containerPort | default 8080 }}
+              protocol: TCP
+          
+          env:
+            # Runtime configuration injection (if needed)
+            {{- with .Values.frontend.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          
+          # Probes
+          {{- if .Values.frontend.probes.startup.enabled }}
+          {{- include "fundamental-stack.frontend.startupProbe" . | nindent 10 }}
+          {{- end }}
+          
+          {{- if .Values.frontend.probes.liveness.enabled }}
+          {{- include "fundamental-stack.frontend.livenessProbe" . | nindent 10 }}
+          {{- end }}
+          
+          {{- if .Values.frontend.probes.readiness.enabled }}
+          {{- include "fundamental-stack.frontend.readinessProbe" . | nindent 10 }}
+          {{- end }}
+          
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          
+          volumeMounts:
+            # Nginx needs writable directories for temp files
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+            # Custom nginx config
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            {{- with .Values.frontend.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5 && nginx -s quit"]
+      
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-config
+          configMap:
+            name: {{ include "fundamental-stack.frontend.fullname" . }}-nginx
+        {{- with .Values.frontend.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      
+      terminationGracePeriodSeconds: {{ .Values.frontend.terminationGracePeriodSeconds | default 30 }}
+      
+      {{- with .Values.frontend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.frontend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.frontend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.frontend.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
