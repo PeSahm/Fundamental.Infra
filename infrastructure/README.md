@@ -142,6 +142,42 @@ Terraform keeps track of what it has created in a **state file** (`terraform.tfs
 - **Apply**: Makes the changes and updates the state
 - **State is precious**: Like your database, don't lose it!
 
+### 🖥️ Where Does Terraform Run?
+
+> **Important Clarification**: Terraform runs on YOUR LOCAL MACHINE, not on the VPS (5.10.248.55).
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  YOUR LOCAL MACHINE (Developer Workstation)                             │
+│                                                                         │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────────┐ │
+│  │  Terraform  │───►│  Cloudflare │───►│  DNS Records Created        │ │
+│  │  + Secrets  │    │  API        │    │  (api.academind.ir → VPS)   │ │
+│  └─────────────┘    └─────────────┘    └─────────────────────────────┘ │
+│         │                                                               │
+│         │           ┌─────────────┐    ┌─────────────────────────────┐ │
+│         └──────────►│  GitHub     │───►│  Secrets Injected           │ │
+│                     │  API        │    │  (VPS_IP, SSH_KEY, etc.)    │ │
+│                     └─────────────┘    └─────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
+                              │
+                              │  GitHub Actions uses secrets
+                              ▼
+                    ┌─────────────────────┐
+                    │  VPS: 5.10.248.55   │
+                    │  (Deployment Target)│
+                    └─────────────────────┘
+```
+
+**In .NET Terms:**
+- Terraform is like running `dotnet ef database update` locally - the command runs on your machine, but it **configures remote services** (Cloudflare, GitHub)
+- The VPS (5.10.248.55) is the **deployment target** - GitHub Actions will SSH into it using the secrets we configure
+- You never need to install Terraform on the VPS
+
+**What Terraform Configures:**
+1. **Cloudflare DNS** → Creates A records pointing to VPS IP
+2. **GitHub Secrets** → Stores VPS_IP, SSH_KEY so GitHub Actions can deploy to the VPS
+
 ---
 
 ## 🎯 What This Manages
@@ -191,15 +227,27 @@ gh auth login              # GitHub CLI (for GITHUB_TOKEN)
 sudo npm install -g wrangler  # Cloudflare CLI (optional)
 ```
 
-### Quick Setup with Script
+### Quick Setup with Script (Recommended)
 
-Use the provided setup script to configure environment variables:
+Use the provided setup script to configure environment variables automatically:
 
 ```bash
-# Interactive setup (prompts for credentials)
+# Run from repository root - auto-detects SSH keys and GitHub token
 source scripts/setup-env.sh
+```
 
-# Or manually create .env file
+**What the script does:**
+- ✅ Auto-detects SSH key (`~/.ssh/id_ed25519`, `id_rsa`, `id_ecdsa`, or `id_dsa`)
+- ✅ Auto-fetches GitHub token from `gh` CLI (if authenticated)
+- ✅ Prompts for Cloudflare credentials
+- ✅ Prompts for container registry credentials
+- ✅ Creates `infrastructure/.env` with all values properly formatted
+- ✅ Exports variables to current shell session
+
+**Manual Setup (Alternative):**
+
+```bash
+# Copy the example and edit manually
 cp infrastructure/.env.example infrastructure/.env
 # Edit infrastructure/.env with your values
 source infrastructure/.env
@@ -211,10 +259,27 @@ source infrastructure/.env
 |----------|--------|-------------|
 | `CLOUDFLARE_API_TOKEN` | [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) | Create with "Edit zone DNS" template |
 | `CLOUDFLARE_ZONE_ID` | Cloudflare Dashboard → academind.ir → Overview | Right sidebar |
-| `GITHUB_TOKEN` | `gh auth token` | Auto-filled if using gh CLI |
+| `GITHUB_TOKEN` | `gh auth token` | Auto-filled by setup script if gh CLI authenticated |
 | `REGISTRY_USER` | Your choice | Container registry username |
 | `REGISTRY_PASSWORD` | Your choice | Container registry password |
-| `SSH_PRIVATE_KEY` | `cat ~/.ssh/id_rsa \| base64 -w 0` | Base64 encoded SSH key |
+| `SSH_PRIVATE_KEY` | Auto-detected by setup script | Base64 encoded SSH key for VPS access |
+
+**SSH Key Detection Order** (setup script checks in this order):
+```bash
+~/.ssh/id_ed25519   # Modern, recommended
+~/.ssh/id_rsa       # Traditional RSA
+~/.ssh/id_ecdsa     # ECDSA
+~/.ssh/id_dsa       # DSA (legacy)
+```
+
+**Manual SSH key encoding:**
+```bash
+# For ed25519 (recommended)
+cat ~/.ssh/id_ed25519 | base64 -w 0
+
+# For RSA
+cat ~/.ssh/id_rsa | base64 -w 0
+```
 
 ### Getting Cloudflare Credentials
 
