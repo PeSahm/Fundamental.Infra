@@ -1,0 +1,42 @@
+{{/*
+=============================================================================
+Backend ConfigMap
+=============================================================================
+Non-sensitive configuration for the backend application.
+Sensitive data should be in Secrets, not here.
+=============================================================================
+*/}}
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fundamental-stack.backend.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+data:
+  # Database connection (password injected via env var)
+  ConnectionStrings__DefaultConnection: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
+  
+  # Redis connection
+  {{- if .Values.redis.enabled }}
+  ConnectionStrings__Redis: "{{ include "fundamental-stack.redis.host" . }}:{{ include "fundamental-stack.redis.port" . }},password=$(REDIS_PASSWORD)"
+  {{- end }}
+  
+  # Application settings
+  {{- if .Values.backend.config }}
+  {{- range $key, $value := .Values.backend.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- end }}
+  
+  # Logging configuration
+  Logging__LogLevel__Default: {{ ((.Values.backend.logging).level) | default "Information" | quote }}
+  Logging__LogLevel__Microsoft: {{ ((.Values.backend.logging).microsoftLevel) | default "Warning" | quote }}
+  Logging__LogLevel__Microsoft.Hosting.Lifetime: "Information"
+  
+  # CORS configuration
+  {{- if and .Values.backend.cors .Values.backend.cors.enabled }}
+  Cors__Origins: {{ .Values.backend.cors.origins | default "*" | quote }}
+  {{- end }}
+{{- end }}

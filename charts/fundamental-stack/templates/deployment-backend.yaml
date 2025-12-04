@@ -1,0 +1,225 @@
+{{/*
+=============================================================================
+Backend Deployment - ASP.NET Core API
+=============================================================================
+Production-grade deployment with:
+- Security contexts (non-root, read-only filesystem)
+- All three probes (startup, liveness, readiness)
+- Resource limits for QoS
+- Environment variables from secrets
+- Graceful shutdown support
+=============================================================================
+*/}}
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fundamental-stack.backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+  {{- with .Values.backend.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  
+  # Deployment strategy for zero-downtime updates
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  
+  # Minimum time a pod must be ready before considered available
+  minReadySeconds: {{ .Values.backend.minReadySeconds | default 5 }}
+  
+  # Revision history for rollbacks
+  revisionHistoryLimit: {{ .Values.backend.revisionHistoryLimit | default 5 }}
+  
+  selector:
+    matchLabels:
+      {{- include "fundamental-stack.backend.selectorLabels" . | nindent 6 }}
+  
+  template:
+    metadata:
+      labels:
+        {{- include "fundamental-stack.backend.selectorLabels" . | nindent 8 }}
+        # Network policy selector
+        fundamental.io/network-access: "backend"
+      annotations:
+        # Force pod restart on configmap/secret changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-backend.yaml") . | sha256sum }}
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    
+    spec:
+      # Service account for RBAC
+      serviceAccountName: {{ include "fundamental-stack.serviceAccountName" . }}
+      
+      # Security context for the entire pod
+      securityContext:
+        {{- if .Values.backend.podSecurityContext }}
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+        {{- else }}
+        {{- include "fundamental-stack.podSecurityContext" . | nindent 8 }}
+        {{- end }}
+      
+      # Image pull secrets for private registry
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      # Init containers (e.g., wait for database)
+      {{- if .Values.backend.initContainers }}
+      initContainers:
+        {{- toYaml .Values.backend.initContainers | nindent 8 }}
+      {{- end }}
+      
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          
+          # Container security context
+          securityContext:
+            {{- if .Values.backend.securityContext }}
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+            {{- else }}
+            {{- include "fundamental-stack.containerSecurityContext" . | nindent 12 }}
+            {{- end }}
+          
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.containerPort | default 8080 }}
+              protocol: TCP
+          
+          # Environment variables
+          env:
+            # ASP.NET Core configuration
+            - name: ASPNETCORE_ENVIRONMENT
+              value: {{ .Values.backend.aspnetEnvironment | default "Production" | quote }}
+            - name: ASPNETCORE_URLS
+              value: "http://+:{{ .Values.backend.containerPort | default 8080 }}"
+            
+            # Database credentials from secret
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fundamental-stack.postgresql.secretName" . }}
+                  key: {{ .Values.postgresql.auth.secretKeys.usernameKey | default "username" }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fundamental-stack.postgresql.secretName" . }}
+                  key: {{ include "fundamental-stack.postgresql.passwordKey" . }}
+            
+            # Redis password from secret
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fundamental-stack.redis.secretName" . }}
+                  key: {{ .Values.redis.auth.existingSecretPasswordKey | default "redis-password" }}
+            {{- end }}
+            
+            # Additional environment variables
+            {{- with .Values.backend.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          
+          # Environment variables from ConfigMap and Secrets
+          envFrom:
+            - configMapRef:
+                name: {{ include "fundamental-stack.backend.fullname" . }}-config
+            {{- with .Values.backend.envFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          
+          # =================================================================
+          # Probes - Critical for Zero-Downtime Deployments
+          # =================================================================
+          
+          # Startup probe - .NET apps need time to warm up
+          # Disables liveness/readiness until startup succeeds
+          {{- if .Values.backend.probes.startup.enabled }}
+          {{- include "fundamental-stack.backend.startupProbe" . | nindent 10 }}
+          {{- end }}
+          
+          # Liveness probe - restart container if unhealthy
+          {{- if .Values.backend.probes.liveness.enabled }}
+          {{- include "fundamental-stack.backend.livenessProbe" . | nindent 10 }}
+          {{- end }}
+          
+          # Readiness probe - remove from service if not ready
+          {{- if .Values.backend.probes.readiness.enabled }}
+          {{- include "fundamental-stack.backend.readinessProbe" . | nindent 10 }}
+          {{- end }}
+          
+          # =================================================================
+          # Resources - Ensure Guaranteed or Burstable QoS
+          # =================================================================
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          
+          # Volume mounts for writable directories
+          volumeMounts:
+            # Temp directory for ASP.NET
+            - name: tmp
+              mountPath: /tmp
+            # Data protection keys (ASP.NET Core)
+            - name: data-protection-keys
+              mountPath: /app/.aspnet/DataProtection-Keys
+            {{- with .Values.backend.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          
+          # Lifecycle hooks for graceful shutdown
+          lifecycle:
+            preStop:
+              exec:
+                # Allow time for load balancer to deregister
+                command: ["/bin/sh", "-c", "sleep 10"]
+      
+      # Volumes
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: data-protection-keys
+          emptyDir: {}
+        {{- with .Values.backend.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      
+      # Graceful termination - give app time to finish requests
+      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds | default 30 }}
+      
+      # Node selection
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      # Affinity rules
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      # Tolerations
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      # Topology spread for high availability
+      {{- with .Values.backend.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
