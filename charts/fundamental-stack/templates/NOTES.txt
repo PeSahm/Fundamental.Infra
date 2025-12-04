@@ -1,0 +1,122 @@
+{{/*
+=============================================================================
+Fundamental Stack - Installation Notes
+=============================================================================
+This file is displayed after Helm install/upgrade.
+Provides useful information for accessing and troubleshooting the deployment.
+=============================================================================
+*/}}
+
+🎉 Fundamental Stack has been deployed!
+
+=============================================================================
+📋 DEPLOYMENT SUMMARY
+=============================================================================
+
+Release:   {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Revision:  {{ .Release.Revision }}
+
+=============================================================================
+🌐 ACCESS YOUR APPLICATION
+=============================================================================
+
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  Frontend: https://{{ .host }}/
+  Backend:  https://{{ .host }}/api
+{{- end }}
+{{- else }}
+  # Port forward to access locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "fundamental-stack.frontend.fullname" . }} 8080:{{ .Values.frontend.service.port }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "fundamental-stack.backend.fullname" . }} 8081:{{ .Values.backend.service.port }}
+
+  Then access:
+  Frontend: http://localhost:8080
+  Backend:  http://localhost:8081
+{{- end }}
+
+{{- if .Values.registryIngress.enabled }}
+
+📦 Container Registry: https://{{ .Values.registryIngress.host }}
+{{- end }}
+
+=============================================================================
+🔍 VERIFY DEPLOYMENT
+=============================================================================
+
+# Check pod status
+kubectl -n {{ .Release.Namespace }} get pods
+
+# Check services
+kubectl -n {{ .Release.Namespace }} get svc
+
+# Check ingress
+kubectl -n {{ .Release.Namespace }} get ingress
+
+# View backend logs
+kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/component=backend -f
+
+# View frontend logs
+kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/component=frontend -f
+
+=============================================================================
+🔐 SECRETS
+=============================================================================
+
+Ensure the following secrets exist in namespace {{ .Release.Namespace }}:
+
+{{- if .Values.postgresql.enabled }}
+  ✓ {{ include "fundamental-stack.postgresql.secretName" . }} (PostgreSQL credentials)
+{{- end }}
+{{- if .Values.redis.enabled }}
+  ✓ {{ include "fundamental-stack.redis.secretName" . }} (Redis credentials)
+{{- end }}
+{{- if .Values.backend.secrets.existingSecret }}
+  ✓ {{ .Values.backend.secrets.existingSecret }} (Backend secrets)
+{{- end }}
+{{- with .Values.global.imagePullSecrets }}
+  ✓ Image pull secrets: {{ range . }}{{ .name }} {{ end }}
+{{- end }}
+
+# List secrets
+kubectl -n {{ .Release.Namespace }} get secrets
+
+=============================================================================
+📊 HEALTH CHECKS
+=============================================================================
+
+# Backend health endpoints:
+/health/startup   - Startup probe (initial readiness)
+/health/live      - Liveness probe (is pod alive?)
+/health/ready     - Readiness probe (ready for traffic?)
+
+# Test backend health:
+kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "fundamental-stack.backend.fullname" . }} -- \
+  curl -s http://localhost:{{ .Values.backend.containerPort }}/health/ready
+
+=============================================================================
+🔄 UPGRADE NOTES
+=============================================================================
+
+# Upgrade with new values:
+helm upgrade {{ .Release.Name }} ./charts/fundamental-stack \
+  -n {{ .Release.Namespace }} \
+  -f values.yaml \
+  -f values-{{ .Values.backend.aspnetEnvironment | lower | default "production" }}.yaml
+
+# Rollback if needed:
+helm rollback {{ .Release.Name }} <revision> -n {{ .Release.Namespace }}
+
+# View history:
+helm history {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+=============================================================================
+📚 DOCUMENTATION
+=============================================================================
+
+Helm Chart:  charts/README.md
+ArgoCD:      argocd/README.md
+Full Docs:   https://github.com/PeSahm/Fundamental.Infra
+
+=============================================================================
