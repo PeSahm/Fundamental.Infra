@@ -1,0 +1,193 @@
+---
+# VPS Setup Playbook
+# ==================
+# Provisions VPS with MicroK8s, Docker, and UFW Firewall
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-vps.yaml
+#
+# Dry run:
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-vps.yaml --check
+
+- name: Setup VPS Infrastructure
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: safe
+      when: upgrade_packages | default(false)
+
+  tasks:
+    # =========================================
+    # Common Setup
+    # =========================================
+    - name: Install common packages
+      ansible.builtin.apt:
+        name: "{{ common_packages }}"
+        state: present
+
+    - name: Set timezone
+      community.general.timezone:
+        name: "{{ timezone }}"
+
+    # =========================================
+    # UFW Firewall
+    # =========================================
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Reset UFW to default
+      community.general.ufw:
+        state: reset
+      when: ufw_reset | default(false)
+
+    - name: Set UFW default incoming policy
+      community.general.ufw:
+        direction: incoming
+        policy: "{{ ufw_default_incoming }}"
+
+    - name: Set UFW default outgoing policy
+      community.general.ufw:
+        direction: outgoing
+        policy: "{{ ufw_default_outgoing }}"
+
+    - name: Allow configured ports through UFW
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port | string }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ ufw_allowed_ports }}"
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+      when: ufw_enabled
+
+    # =========================================
+    # Docker Installation
+    # =========================================
+    - name: Remove old Docker versions
+      ansible.builtin.apt:
+        name:
+          - docker
+          - docker-engine
+          - docker.io
+          - containerd
+          - runc
+        state: absent
+
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Start and enable Docker service
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add users to docker group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: docker
+        append: true
+      loop: "{{ docker_users }}"
+      when: docker_users | length > 0
+
+    # =========================================
+    # MicroK8s Installation
+    # =========================================
+    - name: Install snapd
+      ansible.builtin.apt:
+        name: snapd
+        state: present
+
+    - name: Install MicroK8s via snap
+      community.general.snap:
+        name: microk8s
+        classic: true
+        channel: "{{ microk8s_version }}"
+
+    - name: Wait for MicroK8s to be ready
+      ansible.builtin.command: microk8s status --wait-ready
+      changed_when: false
+      retries: 5
+      delay: 10
+      register: microk8s_status
+      until: microk8s_status.rc == 0
+
+    - name: Enable MicroK8s addons
+      ansible.builtin.command: "microk8s enable {{ item }}"
+      loop: "{{ microk8s_addons }}"
+      register: addon_result
+      changed_when: "'is already enabled' not in addon_result.stdout"
+
+    - name: Create kubectl alias
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        line: "alias kubectl='microk8s kubectl'"
+        create: true
+        mode: "0644"
+
+    - name: Create helm alias
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        line: "alias helm='microk8s helm3'"
+        mode: "0644"
+
+    # =========================================
+    # Verification
+    # =========================================
+    - name: Verify Docker installation
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Verify MicroK8s installation
+      ansible.builtin.command: microk8s kubectl get nodes
+      register: k8s_nodes
+      changed_when: false
+
+    - name: Display installation summary
+      ansible.builtin.debug:
+        msg:
+          - "Docker: {{ docker_version.stdout }}"
+          - "Kubernetes Nodes:"
+          - "{{ k8s_nodes.stdout_lines }}"
+          - "UFW Status: Enabled with ports {{ ufw_allowed_ports | map(attribute='port') | list }}"
+          - "MicroK8s Addons: {{ microk8s_addons }}"
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted

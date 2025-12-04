@@ -1,0 +1,42 @@
+---
+# Group Variables for All Hosts
+# =============================
+
+# Timezone
+timezone: Asia/Tehran
+
+# Common packages to install
+common_packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - unzip
+  - jq
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - software-properties-common
+
+# UFW Firewall Configuration
+ufw_enabled: true
+ufw_default_incoming: deny
+ufw_default_outgoing: allow
+ufw_allowed_ports:
+  - { port: 22, proto: tcp, comment: "SSH" }
+  - { port: 80, proto: tcp, comment: "HTTP" }
+  - { port: 443, proto: tcp, comment: "HTTPS" }
+  - { port: 16443, proto: tcp, comment: "MicroK8s API Server" }
+
+# MicroK8s Configuration
+microk8s_version: "1.28/stable"
+microk8s_addons:
+  - dns
+  - storage
+  - registry
+  - ingress
+
+# Docker Configuration
+docker_users: []

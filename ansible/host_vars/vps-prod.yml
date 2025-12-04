@@ -1,0 +1,13 @@
+---
+# Host Variables for VPS Production Server
+# ========================================
+
+# Override any group variables here if needed
+
+# Example: Add specific user to docker group
+# docker_users:
+#   - deploy
+
+# Example: Additional firewall rules for this host
+# ufw_additional_ports:
+#   - { port: 6443, proto: tcp, comment: "K8s API alternative" }
