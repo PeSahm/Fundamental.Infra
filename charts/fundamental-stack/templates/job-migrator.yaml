@@ -1,0 +1,177 @@
+{{/*
+=============================================================================
+Database Migration Job - Helm Hook
+=============================================================================
+Runs EF Core migrations BEFORE the main deployment.
+
+Hooks:
+- pre-install: Run migrations on fresh install
+- pre-upgrade: Run migrations on upgrade
+
+For .NET Developers:
+- This is like running: dotnet ef database update
+- But in a Kubernetes Job that runs before deployment
+- Ensures database schema is ready before pods start
+
+Security:
+- Same security context as backend (non-root)
+- Uses same database credentials
+- Automatic cleanup after completion
+=============================================================================
+*/}}
+{{- if and .Values.backend.enabled .Values.migrator.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "fundamental-stack.migrator.name" . }}-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.migrator.labels" . | nindent 4 }}
+  annotations:
+    # Helm hooks - run before install/upgrade
+    "helm.sh/hook": pre-install,pre-upgrade
+    # Run after secrets are created but before deployments
+    "helm.sh/hook-weight": "5"
+    # Delete job after success/failure (cleanup)
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  # Retry on failure
+  backoffLimit: {{ .Values.migrator.backoffLimit | default 3 }}
+  
+  # Timeout for the job
+  activeDeadlineSeconds: {{ .Values.migrator.activeDeadlineSeconds | default 600 }}
+  
+  # Keep completed jobs for debugging (optional)
+  ttlSecondsAfterFinished: {{ .Values.migrator.ttlSecondsAfterFinished | default 300 }}
+  
+  template:
+    metadata:
+      labels:
+        {{- include "fundamental-stack.migrator.labels" . | nindent 8 }}
+        # Network policy selector - allows DB access
+        app.kubernetes.io/component: migrator
+      annotations:
+        # Don't inject sidecars (Istio, etc.) into jobs
+        sidecar.istio.io/inject: "false"
+    
+    spec:
+      restartPolicy: Never
+      
+      serviceAccountName: {{ include "fundamental-stack.serviceAccountName" . }}
+      
+      securityContext:
+        {{- if .Values.migrator.podSecurityContext }}
+        {{- toYaml .Values.migrator.podSecurityContext | nindent 8 }}
+        {{- else }}
+        {{- include "fundamental-stack.podSecurityContext" . | nindent 8 }}
+        {{- end }}
+      
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      # Init container to wait for database
+      initContainers:
+        - name: wait-for-db
+          image: busybox:1.36
+          command:
+            - 'sh'
+            - '-c'
+            - |
+              echo "Waiting for PostgreSQL at {{ include "fundamental-stack.postgresql.host" . }}:{{ include "fundamental-stack.postgresql.port" . }}..."
+              until nc -z {{ include "fundamental-stack.postgresql.host" . }} {{ include "fundamental-stack.postgresql.port" . }}; do
+                echo "PostgreSQL not ready, waiting..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          securityContext:
+            {{- include "fundamental-stack.containerSecurityContext" . | nindent 12 }}
+          resources:
+            limits:
+              cpu: 50m
+              memory: 32Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+      
+      containers:
+        - name: migrator
+          # Use the same image as backend, but run migrations
+          image: "{{ .Values.migrator.image.repository | default .Values.backend.image.repository }}:{{ .Values.migrator.image.tag | default .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.migrator.image.pullPolicy | default .Values.backend.image.pullPolicy }}
+          
+          # Override command to run migrations
+          {{- if .Values.migrator.command }}
+          command:
+            {{- toYaml .Values.migrator.command | nindent 12 }}
+          {{- else }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting database migration..."
+              # For .NET projects, this would typically be:
+              # dotnet ef database update
+              # Or a custom migration entry point:
+              dotnet Fundamental.Infrastructure.Migrations.dll
+              echo "Migration completed successfully!"
+          {{- end }}
+          
+          {{- if .Values.migrator.args }}
+          args:
+            {{- toYaml .Values.migrator.args | nindent 12 }}
+          {{- end }}
+          
+          securityContext:
+            {{- if .Values.migrator.securityContext }}
+            {{- toYaml .Values.migrator.securityContext | nindent 12 }}
+            {{- else }}
+            {{- include "fundamental-stack.containerSecurityContext" . | nindent 12 }}
+            {{- end }}
+          
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: {{ .Values.backend.aspnetEnvironment | default "Production" | quote }}
+            
+            # Database credentials
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fundamental-stack.postgresql.secretName" . }}
+                  key: {{ .Values.postgresql.auth.secretKeys.usernameKey | default "username" }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fundamental-stack.postgresql.secretName" . }}
+                  key: {{ include "fundamental-stack.postgresql.passwordKey" . }}
+            
+            # Connection string
+            - name: ConnectionStrings__DefaultConnection
+              value: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
+            
+            {{- with .Values.migrator.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          
+          resources:
+            {{- toYaml .Values.migrator.resources | nindent 12 }}
+          
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      
+      {{- with .Values.migrator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.migrator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
