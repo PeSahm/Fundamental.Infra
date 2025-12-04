@@ -1,0 +1,72 @@
+---
+# Molecule Verify Playbook
+# ========================
+# Validates that the converge playbook worked correctly
+
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    # =========================================
+    # Common Packages Tests
+    # =========================================
+    - name: Verify curl is installed
+      ansible.builtin.command: curl --version
+      register: curl_check
+      changed_when: false
+      failed_when: curl_check.rc != 0
+
+    - name: Verify git is installed
+      ansible.builtin.command: git --version
+      register: git_check
+      changed_when: false
+      failed_when: git_check.rc != 0
+
+    - name: Verify jq is installed
+      ansible.builtin.command: jq --version
+      register: jq_check
+      changed_when: false
+      failed_when: jq_check.rc != 0
+
+    # =========================================
+    # Timezone Test
+    # =========================================
+    - name: Verify timezone is set correctly
+      ansible.builtin.command: cat /etc/timezone
+      register: timezone_check
+      changed_when: false
+      failed_when: "'Asia/Tehran' not in timezone_check.stdout"
+
+    # =========================================
+    # Docker Tests
+    # =========================================
+    - name: Verify Docker is installed
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+
+    - name: Verify Docker CLI works
+      ansible.builtin.command: docker info
+      register: docker_info
+      changed_when: false
+      failed_when: docker_info.rc != 0
+
+    # =========================================
+    # Test Summary
+    # =========================================
+    - name: Display verification summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ All container-testable components verified!"
+          - ""
+          - "Verified:"
+          - "  - Common packages (curl, git, jq)"
+          - "  - Timezone: Asia/Tehran"
+          - "  - Docker installation"
+          - ""
+          - "Skipped (require real VM):"
+          - "  - MicroK8s (requires snap)"
+          - "  - UFW (requires systemd)"

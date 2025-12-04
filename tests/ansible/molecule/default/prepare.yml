@@ -1,0 +1,21 @@
+---
+# Molecule Prepare Playbook
+# =========================
+# Prepares the test container before running converge
+
+- name: Prepare
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait for systemd to be ready
+      ansible.builtin.wait_for:
+        path: /run/systemd/system
+        timeout: 30
+      when: ansible_service_mgr == 'systemd'
+      ignore_errors: true
+
+    - name: Install Python for Ansible
+      ansible.builtin.raw: apt-get update && apt-get install -y python3
+      changed_when: false

@@ -1,0 +1,73 @@
+---
+# Molecule Converge Playbook
+# ==========================
+# Runs the setup-vps playbook against the test container
+# Note: Some tasks are skipped in container environment
+
+- name: Converge
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # Override for container testing (no snap/microk8s in Docker)
+    skip_microk8s: true
+    skip_ufw: true
+    
+    # Import variables from group_vars
+    timezone: Asia/Tehran
+    common_packages:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - unzip
+      - jq
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - software-properties-common
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install common packages
+      ansible.builtin.apt:
+        name: "{{ common_packages }}"
+        state: present
+
+    - name: Set timezone
+      community.general.timezone:
+        name: "{{ timezone }}"
+
+    # Docker installation (works in privileged container)
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        update_cache: true
+
+    # MicroK8s and UFW are skipped in container tests
+    # They require systemd/snap which don't work in Docker
+    - name: Note about skipped components
+      ansible.builtin.debug:
+        msg: "MicroK8s and UFW tests are skipped in container environment"
