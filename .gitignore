@@ -416,3 +416,57 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# ========================
+# Ansible
+# ========================
+ansible/*.retry
+ansible/**/*.retry
+*.pyc
+__pycache__/
+.cache/
+
+# Ansible Vault password file (NEVER commit)
+.vault_pass
+.vault_password
+ansible/.vault_pass
+
+# ========================
+# Helm
+# ========================
+charts/*/charts/
+charts/**/Chart.lock
+
+# ========================
+# Kubernetes
+# ========================
+kubeconfig
+*.kubeconfig
+.kube/
+
+# ========================
+# Secrets (NEVER commit)
+# ========================
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+**/secrets/
+*.secret
+*.secrets
+
+# ========================
+# Tilt
+# ========================
+tilt_modules/
+.tiltignore
+
+# ========================
+# Python (for Ansible)
+# ========================
+venv/
+.venv/
+env/
+.python-version
+
