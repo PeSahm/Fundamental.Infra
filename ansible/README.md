@@ -23,13 +23,40 @@ ansible/
 
 ## Prerequisites
 
-### On Linux/macOS
+### On Linux (Ubuntu/Debian)
 
 ```bash
 # Install Ansible
+sudo apt update && sudo apt install -y ansible
+
+# Or via pip (latest version)
 pip install ansible
 
+# Clone the repository
+git clone https://github.com/PeSahm/Fundamental.Infra.git
+cd Fundamental.Infra/ansible
+
 # Install required collections
+ansible-galaxy collection install -r requirements.yml
+
+# Setup SSH key (copy your private key or generate new one)
+# Ensure your public key is in the VPS's ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/id_rsa
+chmod 700 ~/.ssh
+```
+
+### On macOS
+
+```bash
+# Install Ansible via Homebrew
+brew install ansible
+
+# Or via pip
+pip install ansible
+
+# Clone and setup
+git clone https://github.com/PeSahm/Fundamental.Infra.git
+cd Fundamental.Infra/ansible
 ansible-galaxy collection install -r requirements.yml
 ```
 
