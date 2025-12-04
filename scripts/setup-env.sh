@@ -81,15 +81,31 @@ fi
 # -----------------------------------------------------------------------------
 echo ""
 if [ -z "$SSH_PRIVATE_KEY" ]; then
-    DEFAULT_KEY="$HOME/.ssh/id_rsa"
-    if [ -f "$DEFAULT_KEY" ]; then
-        read -p "Use SSH key from $DEFAULT_KEY? [Y/n]: " USE_DEFAULT
+    # Check for common SSH key types in order of preference
+    SSH_KEY_FILES=(
+        "$HOME/.ssh/id_ed25519"
+        "$HOME/.ssh/id_rsa"
+        "$HOME/.ssh/id_ecdsa"
+        "$HOME/.ssh/id_dsa"
+    )
+    
+    FOUND_KEY=""
+    for KEY_FILE in "${SSH_KEY_FILES[@]}"; do
+        if [ -f "$KEY_FILE" ]; then
+            FOUND_KEY="$KEY_FILE"
+            break
+        fi
+    done
+    
+    if [ -n "$FOUND_KEY" ]; then
+        read -p "Use SSH key from $FOUND_KEY? [Y/n]: " USE_DEFAULT
         if [ "${USE_DEFAULT,,}" != "n" ]; then
-            SSH_PRIVATE_KEY=$(cat "$DEFAULT_KEY" | base64 -w 0)
+            SSH_PRIVATE_KEY=$(cat "$FOUND_KEY" | base64 -w 0)
             echo "✅ SSH key loaded and base64 encoded"
         fi
     else
-        echo "⚠️  No default SSH key found. Skipping SSH_PRIVATE_KEY."
+        echo "⚠️  No SSH key found in ~/.ssh/. Skipping SSH_PRIVATE_KEY."
+        echo "   Looked for: id_ed25519, id_rsa, id_ecdsa, id_dsa"
     fi
 fi
 
