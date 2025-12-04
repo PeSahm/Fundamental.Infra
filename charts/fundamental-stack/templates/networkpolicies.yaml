@@ -1,0 +1,293 @@
+{{/*
+=============================================================================
+Network Policies - Defense in Depth
+=============================================================================
+Implements the principle of least privilege for network access:
+
+Traffic Flow (allowed):
+  Internet → Ingress Controller → Frontend → (API calls via Ingress)
+                ↓
+            Backend → PostgreSQL
+                ↓
+              Redis
+
+Default: DENY ALL ingress/egress, then explicitly allow required traffic.
+
+For .NET Developers:
+- Think of this as a firewall ruleset for your pods
+- Similar to Azure NSG rules or AWS Security Groups
+- "Implicit deny" like a well-configured firewall
+=============================================================================
+*/}}
+{{- if .Values.networkPolicies.enabled }}
+---
+{{/*
+=============================================================================
+1. Default Deny All - The foundation of network security
+=============================================================================
+This policy denies ALL ingress and egress traffic by default.
+All other policies "punch holes" in this wall for specific allowed traffic.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: default-deny
+spec:
+  podSelector: {}  # Applies to ALL pods in namespace
+  policyTypes:
+    - Ingress
+    - Egress
+---
+{{/*
+=============================================================================
+2. Allow DNS - Required for service discovery
+=============================================================================
+Without this, pods cannot resolve service names to IPs.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-allow-dns
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: allow-dns
+spec:
+  podSelector: {}  # Applies to all pods
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+{{/*
+=============================================================================
+3. Frontend Policy - Accept from Ingress, allow API calls
+=============================================================================
+*/}}
+{{- if .Values.frontend.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.frontend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: frontend
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "fundamental-stack.frontend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  
+  ingress:
+    # Allow traffic from Ingress Controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicies.ingressNamespace | default "ingress-nginx" }}
+          podSelector:
+            matchLabels:
+              {{- if .Values.networkPolicies.ingressControllerLabels }}
+              {{- toYaml .Values.networkPolicies.ingressControllerLabels | nindent 14 }}
+              {{- else }}
+              app.kubernetes.io/name: ingress-nginx
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.frontend.containerPort | default 8080 }}
+  
+  egress:
+    # Frontend typically only needs DNS (handled by allow-dns policy)
+    # If frontend makes direct API calls (not via ingress), add here
+    []
+{{- end }}
+---
+{{/*
+=============================================================================
+4. Backend Policy - Accept from Ingress, connect to DB/Redis
+=============================================================================
+*/}}
+{{- if .Values.backend.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: backend
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "fundamental-stack.backend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  
+  ingress:
+    # Allow traffic from Ingress Controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicies.ingressNamespace | default "ingress-nginx" }}
+          podSelector:
+            matchLabels:
+              {{- if .Values.networkPolicies.ingressControllerLabels }}
+              {{- toYaml .Values.networkPolicies.ingressControllerLabels | nindent 14 }}
+              {{- else }}
+              app.kubernetes.io/name: ingress-nginx
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.containerPort | default 8080 }}
+  
+  egress:
+    # Allow connection to PostgreSQL
+    {{- if .Values.postgresql.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+    {{- end }}
+    
+    # Allow connection to Redis
+    {{- if .Values.redis.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.redis.master.service.ports.redis | default 6379 }}
+    {{- end }}
+    
+    # Allow external HTTPS (for external APIs, if needed)
+    {{- if .Values.networkPolicies.allowExternalHttps }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+{{- end }}
+---
+{{/*
+=============================================================================
+5. Database Policy - Accept only from Backend
+=============================================================================
+*/}}
+{{- if .Values.postgresql.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-postgresql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: database
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  
+  ingress:
+    # Allow from Backend pods
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "fundamental-stack.backend.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+    
+    # Allow from Migrator job
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: migrator
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+  
+  egress:
+    # PostgreSQL typically doesn't need egress except DNS
+    []
+{{- end }}
+---
+{{/*
+=============================================================================
+6. Redis Policy - Accept only from Backend
+=============================================================================
+*/}}
+{{- if .Values.redis.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: cache
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  
+  ingress:
+    # Allow from Backend pods
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "fundamental-stack.backend.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.redis.master.service.ports.redis | default 6379 }}
+  
+  egress:
+    # Redis replication (if using replicas)
+    {{- if gt (int .Values.redis.replica.replicaCount) 0 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.redis.master.service.ports.redis | default 6379 }}
+    {{- end }}
+{{- end }}
+{{- end }}

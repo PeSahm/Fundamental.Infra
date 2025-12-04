@@ -1,0 +1,64 @@
+{{/*
+=============================================================================
+Pod Disruption Budgets (PDB)
+=============================================================================
+PDBs ensure minimum availability during voluntary disruptions like:
+- Node drains for maintenance
+- Cluster upgrades
+- Pod evictions due to resource constraints
+
+For .NET Developers:
+- Think of this as "minimum instances" in Azure App Service scaling
+- Prevents all pods from being killed at once during updates
+- Critical for zero-downtime deployments
+=============================================================================
+*/}}
+
+{{/*
+Backend PDB
+*/}}
+{{- if and .Values.backend.enabled .Values.backend.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "fundamental-stack.backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.backend.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.backend.podDisruptionBudget.minAvailable }}
+  {{- else if .Values.backend.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.backend.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fundamental-stack.backend.selectorLabels" . | nindent 6 }}
+{{- end }}
+
+---
+{{/*
+Frontend PDB
+*/}}
+{{- if and .Values.frontend.enabled .Values.frontend.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "fundamental-stack.frontend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.frontend.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.frontend.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.frontend.podDisruptionBudget.minAvailable }}
+  {{- else if .Values.frontend.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.frontend.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fundamental-stack.frontend.selectorLabels" . | nindent 6 }}
+{{- end }}

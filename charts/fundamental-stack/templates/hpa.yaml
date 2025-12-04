@@ -1,0 +1,141 @@
+{{/*
+=============================================================================
+Horizontal Pod Autoscalers (HPA)
+=============================================================================
+HPAs automatically scale the number of pods based on CPU/memory utilization.
+
+For .NET Developers:
+- Similar to Azure App Service Auto-Scale rules
+- Scales out (more pods) when load increases
+- Scales in (fewer pods) when load decreases
+- Uses Kubernetes Metrics Server
+
+Best Practices:
+- Set appropriate min/max replicas
+- Use multiple metrics (CPU + Memory)
+- Consider custom metrics for business logic
+- Test scaling under load
+=============================================================================
+*/}}
+
+{{/*
+Backend HPA
+*/}}
+{{- if and .Values.backend.enabled .Values.backend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fundamental-stack.backend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fundamental-stack.backend.fullname" . }}
+  
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas | default 10 }}
+  
+  metrics:
+    {{- if .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.backend.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  
+  behavior:
+    scaleDown:
+      # Stabilize scale down to prevent thrashing
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      # Allow faster scale up for responsiveness
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+{{- end }}
+
+---
+{{/*
+Frontend HPA
+*/}}
+{{- if and .Values.frontend.enabled .Values.frontend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fundamental-stack.frontend.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.frontend.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fundamental-stack.frontend.fullname" . }}
+  
+  minReplicas: {{ .Values.frontend.autoscaling.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.frontend.autoscaling.maxReplicas | default 5 }}
+  
+  metrics:
+    {{- if .Values.frontend.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.frontend.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.frontend.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.frontend.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+      selectPolicy: Max
+{{- end }}
