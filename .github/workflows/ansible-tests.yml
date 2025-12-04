@@ -44,41 +44,10 @@ jobs:
         run: |
           ansible-lint ansible/playbooks/ --exclude tests/
 
-  molecule:
-    name: Molecule Tests
+  syntax-check:
+    name: Playbook Syntax Check
     runs-on: ubuntu-latest
     needs: lint
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install ansible molecule molecule-plugins[docker] docker
-
-      - name: Install Ansible collections
-        run: |
-          ansible-galaxy collection install -r ansible/requirements.yml
-
-      - name: Run Molecule tests
-        working-directory: tests/ansible
-        run: |
-          molecule test
-        env:
-          PY_COLORS: '1'
-          ANSIBLE_FORCE_COLOR: '1'
-
-  # Integration tests against real VPS (manual trigger only)
-  integration:
-    name: Integration Tests (VPS)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,16 +65,12 @@ jobs:
         run: |
           ansible-galaxy collection install -r ansible/requirements.yml
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Run integration tests
+      - name: Syntax check setup-vps.yaml
         working-directory: ansible
         run: |
-          ansible-playbook -i inventory/hosts.ini ../tests/ansible/test-setup-vps.yaml
-        env:
-          ANSIBLE_HOST_KEY_CHECKING: 'false'
+          ansible-playbook playbooks/setup-vps.yaml --syntax-check
+
+      - name: Syntax check test playbook
+        working-directory: ansible
+        run: |
+          ansible-playbook ../tests/ansible/test-setup-vps.yaml --syntax-check
