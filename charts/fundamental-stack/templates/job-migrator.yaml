@@ -1,12 +1,13 @@
 {{/*
 =============================================================================
-Database Migration Job - Helm Hook
+Database Migration Job - Sync Wave
 =============================================================================
-Runs EF Core migrations BEFORE the main deployment.
+Runs EF Core migrations AFTER PostgreSQL is ready but BEFORE backend starts.
 
-Hooks:
-- pre-install: Run migrations on fresh install
-- pre-upgrade: Run migrations on upgrade
+ArgoCD Sync Waves:
+- Wave -5: PostgreSQL/Redis (via subchart defaults)
+- Wave 0:  This migrator job
+- Wave 5:  Backend/Frontend deployments
 
 For .NET Developers:
 - Runs the Migrations project with "migrate" argument
@@ -28,12 +29,11 @@ metadata:
   labels:
     {{- include "fundamental-stack.migrator.labels" . | nindent 4 }}
   annotations:
-    # Helm hooks - run before install/upgrade
-    "helm.sh/hook": pre-install,pre-upgrade
-    # Run after secrets are created but before deployments
-    "helm.sh/hook-weight": "5"
-    # Delete job after success/failure (cleanup)
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    # ArgoCD sync wave - runs after PostgreSQL (wave -5), before backend (wave 5)
+    argocd.argoproj.io/sync-wave: "0"
+    # Hook to ensure it runs before backend pods
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   # Retry on failure
   backoffLimit: {{ .Values.migrator.backoffLimit | default 3 }}
@@ -57,7 +57,8 @@ spec:
     spec:
       restartPolicy: Never
       
-      serviceAccountName: {{ include "fundamental-stack.serviceAccountName" . }}
+      # Use default SA since this runs as PreSync hook before main SA is created
+      serviceAccountName: default
       
       securityContext:
         {{- if .Values.migrator.podSecurityContext }}

@@ -18,10 +18,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
-  {{- with .Values.backend.annotations }}
   annotations:
+    # Sync wave - runs after migrations (wave 0)
+    argocd.argoproj.io/sync-wave: "5"
+    {{- with .Values.backend.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
 spec:
   {{- if not .Values.backend.autoscaling.enabled }}
   replicas: {{ .Values.backend.replicaCount }}
