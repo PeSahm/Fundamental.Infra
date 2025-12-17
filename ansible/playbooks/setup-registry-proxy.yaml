@@ -170,6 +170,12 @@
     # =========================================
     # Save registry credentials
     # =========================================
+    - name: Create credentials directory
+      ansible.builtin.file:
+        path: /root/.fundamental-credentials
+        state: directory
+        mode: '0700'
+
     - name: Save registry credentials
       ansible.builtin.copy:
         content: |
