@@ -60,8 +60,8 @@ jobs:
           
           # Validate component
           COMPONENT="${{ github.event.client_payload.component }}"
-          if [[ ! "$COMPONENT" =~ ^(backend|frontend)$ ]]; then
-            echo "Error: Invalid component. Must be 'backend' or 'frontend'"
+          if [[ ! "$COMPONENT" =~ ^(backend|frontend|migrator)$ ]]; then
+            echo "Error: Invalid component. Must be 'backend', 'frontend', or 'migrator'"
             exit 1
           fi
           
@@ -107,7 +107,8 @@ jobs:
           case "$COMPONENT" in
             backend)
               yq -i ".backend.image.tag = \"$TAG\"" "$VALUES_FILE"
-              # Also update migrator tag (uses same image)
+              ;;
+            migrator)
               yq -i ".migrator.image.tag = \"$TAG\"" "$VALUES_FILE"
               ;;
             frontend)
