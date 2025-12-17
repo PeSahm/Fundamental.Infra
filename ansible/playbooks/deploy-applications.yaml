@@ -1,0 +1,196 @@
+---
+# Deploy Applications Playbook
+# ============================
+# Deploys Fundamental platform applications via ArgoCD
+#
+# Prerequisites:
+#   - ArgoCD installed (setup-argocd.yaml)
+#   - Kubernetes secrets created (setup-kubernetes-secrets.yaml)
+#   - Docker images pushed to registry
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy-applications.yaml
+#
+# Variables:
+#   - git_repo_url: GitHub repository URL for Infra
+#   - deploy_env: Environment to deploy (dev or prod)
+
+- name: Deploy Fundamental Applications
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  vars:
+    argocd_namespace: argocd
+    git_repo_url: "https://github.com/PeSahm/Fundamental.Infra.git"
+    git_branch: main
+    deploy_environments:
+      - dev
+      # - prod  # Uncomment when ready for production
+
+  tasks:
+    # =========================================
+    # Wait for ArgoCD to be ready
+    # =========================================
+    - name: Wait for ArgoCD server
+      ansible.builtin.command: >
+        microk8s kubectl wait --for=condition=available
+        --timeout=120s deployment/argocd-server
+        -n {{ argocd_namespace }}
+      changed_when: false
+
+    # =========================================
+    # Create ArgoCD Project
+    # =========================================
+    - name: Create ArgoCD Project manifest
+      ansible.builtin.copy:
+        content: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: AppProject
+          metadata:
+            name: fundamental
+            namespace: {{ argocd_namespace }}
+            finalizers:
+              - resources-finalizer.argocd.argoproj.io
+          spec:
+            description: Fundamental Platform Project
+            
+            sourceRepos:
+              - '{{ git_repo_url }}'
+              - 'https://charts.bitnami.com/bitnami'
+            
+            destinations:
+              - namespace: fundamental-dev
+                server: https://kubernetes.default.svc
+              - namespace: fundamental-prod
+                server: https://kubernetes.default.svc
+              - namespace: {{ argocd_namespace }}
+                server: https://kubernetes.default.svc
+            
+            clusterResourceWhitelist:
+              - group: ''
+                kind: Namespace
+              - group: 'networking.k8s.io'
+                kind: Ingress
+              - group: 'networking.k8s.io'
+                kind: IngressClass
+            
+            namespaceResourceWhitelist:
+              - group: '*'
+                kind: '*'
+            
+            orphanedResources:
+              warn: true
+        dest: /tmp/argocd-project.yaml
+        mode: '0644'
+
+    - name: Apply ArgoCD Project
+      ansible.builtin.command: "microk8s kubectl apply -f /tmp/argocd-project.yaml"
+      register: project_apply
+      changed_when: "'created' in project_apply.stdout or 'configured' in project_apply.stdout"
+
+    # =========================================
+    # Create ArgoCD Applications
+    # =========================================
+    - name: Create ArgoCD Application manifest for each environment
+      ansible.builtin.copy:
+        content: |
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: fundamental-{{ item }}
+            namespace: {{ argocd_namespace }}
+            finalizers:
+              - resources-finalizer.argocd.argoproj.io
+          spec:
+            project: fundamental
+            
+            source:
+              repoURL: {{ git_repo_url }}
+              targetRevision: {{ git_branch }}
+              path: charts/fundamental-stack
+              helm:
+                valueFiles:
+                  - values.yaml
+                  - values-{{ item }}.yaml
+            
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: fundamental-{{ item }}
+            
+            syncPolicy:
+              automated:
+                prune: true
+                selfHeal: true
+                allowEmpty: false
+              syncOptions:
+                - CreateNamespace=true
+                - PrunePropagationPolicy=foreground
+                - PruneLast=true
+              retry:
+                limit: 5
+                backoff:
+                  duration: 5s
+                  factor: 2
+                  maxDuration: 3m
+            
+            ignoreDifferences:
+              - group: apps
+                kind: Deployment
+                jsonPointers:
+                  - /spec/replicas
+        dest: "/tmp/argocd-app-{{ item }}.yaml"
+        mode: '0644'
+      loop: "{{ deploy_environments }}"
+
+    - name: Apply ArgoCD Applications
+      ansible.builtin.command: "microk8s kubectl apply -f /tmp/argocd-app-{{ item }}.yaml"
+      loop: "{{ deploy_environments }}"
+      register: app_apply
+      changed_when: "'created' in app_apply.stdout or 'configured' in app_apply.stdout"
+
+    # =========================================
+    # Trigger Initial Sync
+    # =========================================
+    - name: Wait for applications to be created
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Check application status
+      ansible.builtin.command: "microk8s kubectl get applications -n {{ argocd_namespace }}"
+      register: apps_status
+      changed_when: false
+
+    - name: Display application status
+      ansible.builtin.debug:
+        msg:
+          - "✅ ArgoCD Applications created"
+          - ""
+          - "Applications:"
+          - "{{ apps_status.stdout_lines }}"
+          - ""
+          - "🔄 Applications will auto-sync from Git repository"
+          - "📊 Monitor at: https://argocd.academind.ir"
+
+    # =========================================
+    # Verification
+    # =========================================
+    - name: Get all resources in fundamental-dev namespace
+      ansible.builtin.command: "microk8s kubectl get all -n fundamental-dev"
+      register: dev_resources
+      changed_when: false
+      failed_when: false
+
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "========================================="
+          - "Deployment Summary"
+          - "========================================="
+          - ""
+          - "ArgoCD UI: https://argocd.academind.ir"
+          - "Git Repo: {{ git_repo_url }}"
+          - "Environments: {{ deploy_environments }}"
+          - ""
+          - "Resources in fundamental-dev:"
+          - "{{ dev_resources.stdout_lines | default(['Waiting for sync...']) }}"
