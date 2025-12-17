@@ -107,7 +107,7 @@ data:
                 }
             }
             
-            {{- if .Values.frontend.nginx.apiProxy.enabled }}
+            {{- if and .Values.frontend.nginx .Values.frontend.nginx.apiProxy .Values.frontend.nginx.apiProxy.enabled }}
             # API proxy (optional - can also be handled by Ingress)
             location /api {
                 proxy_pass {{ .Values.frontend.nginx.apiProxy.target }};
