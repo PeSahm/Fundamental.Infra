@@ -368,51 +368,45 @@ networkPolicies:
   #        port: 443
 
 # =============================================================================
-# PostgreSQL (Bitnami Chart)
+# PostgreSQL (Official Image)
 # =============================================================================
 postgresql:
   # Enable embedded PostgreSQL
   # Set to false to use external database
   enabled: true
   
+  # Official PostgreSQL image
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  
   # Authentication
   auth:
     # Use existing secret (recommended for production)
-    existingSecret: ""
+    existingSecret: "postgresql-credentials"
     # Secret keys (if using existingSecret)
     secretKeys:
-      adminPasswordKey: "postgres-password"
-      userPasswordKey: "password"
       usernameKey: "username"
-      replicationPasswordKey: "replication-password"
+      passwordKey: "password"
     
-    # If not using existingSecret, these are used to create one
-    # WARNING: Only for development - use existingSecret in production
+    # Database name
     database: "fundamental"
-    username: "fundamental"
-    # password: ""  # Auto-generated if not set
   
-  # Primary instance configuration
-  primary:
-    # Persistence
-    persistence:
-      enabled: true
-      size: 10Gi
-      # storageClass: ""
-    
-    # Resources
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 256Mi
-    
-    # Service
-    service:
-      ports:
-        postgresql: 5432
+  # Persistence
+  persistence:
+    enabled: true
+    size: 10Gi
+    # storageClass: ""
+  
+  # Resources
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
 
 # External database (when postgresql.enabled = false)
 externalDatabase:
@@ -423,37 +417,35 @@ externalDatabase:
   existingSecretPasswordKey: "password"
 
 # =============================================================================
-# Redis (Bitnami Chart)
+# Redis (Official Image)
 # =============================================================================
 redis:
   # Enable embedded Redis
   enabled: true
   
-  # Architecture: standalone or replication
-  architecture: standalone
+  # Official Redis image
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
   
   auth:
     enabled: true
-    existingSecret: ""
-    existingSecretPasswordKey: "redis-password"
-    # password: ""  # Auto-generated if not set
+    existingSecret: "redis-credentials"
+    existingSecretPasswordKey: "password"
   
-  master:
-    persistence:
-      enabled: true
-      size: 2Gi
-    
-    resources:
-      limits:
-        cpu: 200m
-        memory: 256Mi
-      requests:
-        cpu: 50m
-        memory: 128Mi
-    
-    service:
-      ports:
-        redis: 6379
+  persistence:
+    enabled: true
+    size: 2Gi
+    # storageClass: ""
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
 
 # External Redis (when redis.enabled = false)
 externalRedis:

@@ -164,53 +164,55 @@ registryIngress:
 postgresql:
   enabled: true
   
+  image:
+    repository: postgres
+    tag: "17-alpine"
+  
   auth:
-    # Use existing secret in dev
     existingSecret: "postgresql-credentials"
     secretKeys:
-      adminPasswordKey: "postgres-password"
-      userPasswordKey: "password"
       usernameKey: "username"
+      passwordKey: "password"
     database: "fundamental_dev"
-    username: "fundamental"
   
-  primary:
-    persistence:
-      enabled: true
-      size: 5Gi
-    
-    resources:
-      limits:
-        cpu: 300m
-        memory: 256Mi
-      requests:
-        cpu: 50m
-        memory: 128Mi
+  persistence:
+    enabled: true
+    size: 5Gi
+  
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
 
 # =============================================================================
 # Redis (Development)
 # =============================================================================
 redis:
   enabled: true
-  architecture: standalone
+  
+  image:
+    repository: redis
+    tag: "7-alpine"
   
   auth:
     enabled: true
     existingSecret: "redis-credentials"
-    existingSecretPasswordKey: "redis-password"
+    existingSecretPasswordKey: "password"
   
-  master:
-    persistence:
-      enabled: true
-      size: 1Gi
-    
-    resources:
-      limits:
-        cpu: 100m
-        memory: 128Mi
-      requests:
-        cpu: 25m
-        memory: 64Mi
+  persistence:
+    enabled: true
+    size: 1Gi
+  
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 25m
+      memory: 64Mi
 
 # =============================================================================
 # Network Policies (Development)

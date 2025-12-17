@@ -1,0 +1,129 @@
+{{/*
+=============================================================================
+PostgreSQL StatefulSet - Official Image
+=============================================================================
+Uses official postgres:17-alpine image instead of Bitnami.
+Single-node deployment suitable for dev/staging environments.
+=============================================================================
+*/}}
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-postgresql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  serviceName: {{ include "fundamental-stack.fullname" . }}-postgresql-hl
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "fundamental-stack.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "fundamental-stack.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: postgresql
+        fundamental.io/network-access: "postgresql"
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      securityContext:
+        fsGroup: 999
+      
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy | default "IfNotPresent" }}
+          
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+          
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.auth.existingSecret | default "postgresql-credentials" }}
+                  key: {{ .Values.postgresql.auth.secretKeys.usernameKey | default "username" }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.auth.existingSecret | default "postgresql-credentials" }}
+                  key: {{ .Values.postgresql.auth.secretKeys.passwordKey | default "password" }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | default "fundamental" }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          
+          {{- with .Values.postgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            {{- if .Values.postgresql.initdbScripts }}
+            - name: initdb-scripts
+              mountPath: /docker-entrypoint-initdb.d
+            {{- end }}
+      
+      {{- if .Values.postgresql.initdbScripts }}
+      volumes:
+        - name: initdb-scripts
+          configMap:
+            name: {{ include "fundamental-stack.fullname" . }}-postgresql-initdb
+      {{- end }}
+  
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ .Values.postgresql.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size | default "8Gi" }}
+{{- end }}

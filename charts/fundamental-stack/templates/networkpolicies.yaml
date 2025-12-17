@@ -162,11 +162,12 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgresql
+              app.kubernetes.io/name: {{ include "fundamental-stack.name" . }}
               app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: postgresql
       ports:
         - protocol: TCP
-          port: {{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+          port: 5432
     {{- end }}
     
     # Allow connection to Redis
@@ -174,11 +175,12 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: redis
+              app.kubernetes.io/name: {{ include "fundamental-stack.name" . }}
               app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: redis
       ports:
         - protocol: TCP
-          port: {{ .Values.redis.master.service.ports.redis | default 6379 }}
+          port: 6379
     {{- end }}
     
     # Allow external HTTPS (for external APIs, if needed)
@@ -213,8 +215,9 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/name: {{ include "fundamental-stack.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgresql
   policyTypes:
     - Ingress
     - Egress
@@ -227,7 +230,7 @@ spec:
               {{- include "fundamental-stack.backend.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
-          port: {{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+          port: 5432
     
     # Allow from Migrator job
     - from:
@@ -237,7 +240,7 @@ spec:
               app.kubernetes.io/instance: {{ .Release.Name }}
       ports:
         - protocol: TCP
-          port: {{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+          port: 5432
   
   egress:
     # PostgreSQL typically doesn't need egress except DNS
@@ -261,8 +264,9 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: redis
+      app.kubernetes.io/name: {{ include "fundamental-stack.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: redis
   policyTypes:
     - Ingress
     - Egress
@@ -275,19 +279,10 @@ spec:
               {{- include "fundamental-stack.backend.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
-          port: {{ .Values.redis.master.service.ports.redis | default 6379 }}
+          port: 6379
   
   egress:
-    # Redis replication (if using replicas)
-    {{- if gt (int .Values.redis.replica.replicaCount) 0 }}
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: redis
-              app.kubernetes.io/instance: {{ .Release.Name }}
-      ports:
-        - protocol: TCP
-          port: {{ .Values.redis.master.service.ports.redis | default 6379 }}
-    {{- end }}
+    # Redis doesn't need outbound connections in standalone mode
+    []
 {{- end }}
 {{- end }}

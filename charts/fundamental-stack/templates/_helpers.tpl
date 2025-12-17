@@ -186,7 +186,7 @@ PostgreSQL port
 */}}
 {{- define "fundamental-stack.postgresql.port" -}}
 {{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.primary.service.ports.postgresql | default 5432 }}
+{{- 5432 }}
 {{- else }}
 {{- .Values.externalDatabase.port | default 5432 }}
 {{- end }}
@@ -223,7 +223,7 @@ PostgreSQL password key in secret
 */}}
 {{- define "fundamental-stack.postgresql.passwordKey" -}}
 {{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.auth.secretKeys.userPasswordKey | default "password" }}
+{{- .Values.postgresql.auth.secretKeys.passwordKey | default "password" }}
 {{- else }}
 {{- .Values.externalDatabase.existingSecretPasswordKey | default "password" }}
 {{- end }}
@@ -240,7 +240,7 @@ Redis host
 */}}
 {{- define "fundamental-stack.redis.host" -}}
 {{- if .Values.redis.enabled }}
-{{- printf "%s-redis-master" (include "fundamental-stack.fullname" .) }}
+{{- printf "%s-redis" (include "fundamental-stack.fullname" .) }}
 {{- else }}
 {{- .Values.externalRedis.host }}
 {{- end }}
@@ -251,7 +251,7 @@ Redis port
 */}}
 {{- define "fundamental-stack.redis.port" -}}
 {{- if .Values.redis.enabled }}
-{{- .Values.redis.master.service.ports.redis | default 6379 }}
+{{- 6379 }}
 {{- else }}
 {{- .Values.externalRedis.port | default 6379 }}
 {{- end }}
