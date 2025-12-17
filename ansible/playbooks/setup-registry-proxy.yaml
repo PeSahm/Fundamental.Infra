@@ -1,0 +1,255 @@
+---
+# Registry Proxy Setup Playbook
+# =============================
+# Configures nginx to proxy registry.academind.ir to MicroK8s registry
+# This allows external pushes to the MicroK8s built-in registry
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-registry-proxy.yaml
+
+- name: Setup Container Registry Proxy
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  vars:
+    registry_domain: registry.academind.ir
+    microk8s_registry_port: 32000
+    # Generate htpasswd credentials
+    registry_username: fundamental
+    registry_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+
+  tasks:
+    # =========================================
+    # Install nginx and apache2-utils (for htpasswd)
+    # =========================================
+    - name: Install nginx and apache2-utils
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - apache2-utils
+        state: present
+        update_cache: true
+
+    # =========================================
+    # Create registry authentication
+    # =========================================
+    - name: Create htpasswd directory
+      ansible.builtin.file:
+        path: /etc/nginx/htpasswd
+        state: directory
+        mode: '0755'
+
+    - name: Create htpasswd file for registry
+      ansible.builtin.command: >
+        htpasswd -cb /etc/nginx/htpasswd/registry {{ registry_username }} {{ registry_password }}
+      no_log: true
+      changed_when: true
+
+    # =========================================
+    # Configure nginx for registry proxy
+    # =========================================
+    - name: Create nginx config for registry proxy
+      ansible.builtin.copy:
+        content: |
+          # Registry Proxy Configuration
+          # Proxies registry.academind.ir to MicroK8s registry
+          
+          # Increase client body size for large images
+          client_max_body_size 2G;
+          
+          # Upstream MicroK8s registry
+          upstream microk8s-registry {
+              server 127.0.0.1:{{ microk8s_registry_port }};
+          }
+          
+          server {
+              listen 80;
+              server_name {{ registry_domain }};
+              
+              # Redirect HTTP to HTTPS
+              return 301 https://$server_name$request_uri;
+          }
+          
+          server {
+              listen 443 ssl http2;
+              server_name {{ registry_domain }};
+              
+              # SSL Configuration (using self-signed or Let's Encrypt)
+              ssl_certificate /etc/ssl/certs/registry.crt;
+              ssl_certificate_key /etc/ssl/private/registry.key;
+              
+              # SSL Security settings
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_prefer_server_ciphers on;
+              ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+              
+              # Disable buffering for registry pushes
+              proxy_buffering off;
+              proxy_request_buffering off;
+              
+              # Required headers for Docker registry
+              proxy_set_header Host $http_host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              
+              # Allow large image layers
+              client_max_body_size 2G;
+              
+              # Health check endpoint (no auth)
+              location /v2/ {
+                  # Require authentication for push operations
+                  limit_except GET HEAD {
+                      auth_basic "Registry Authentication";
+                      auth_basic_user_file /etc/nginx/htpasswd/registry;
+                  }
+                  
+                  proxy_pass http://microk8s-registry;
+                  proxy_read_timeout 900;
+              }
+              
+              location / {
+                  auth_basic "Registry Authentication";
+                  auth_basic_user_file /etc/nginx/htpasswd/registry;
+                  
+                  proxy_pass http://microk8s-registry;
+                  proxy_read_timeout 900;
+              }
+          }
+        dest: /etc/nginx/sites-available/registry
+        mode: '0644'
+      notify: Reload nginx
+
+    - name: Enable registry site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/registry
+        dest: /etc/nginx/sites-enabled/registry
+        state: link
+      notify: Reload nginx
+
+    # =========================================
+    # Generate self-signed SSL certificate
+    # =========================================
+    - name: Create SSL directory
+      ansible.builtin.file:
+        path: /etc/ssl/private
+        state: directory
+        mode: '0700'
+
+    - name: Generate self-signed SSL certificate
+      ansible.builtin.command: |
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout /etc/ssl/private/registry.key \
+          -out /etc/ssl/certs/registry.crt \
+          -subj "/CN={{ registry_domain }}/O=Fundamental/C=IR"
+      args:
+        creates: /etc/ssl/certs/registry.crt
+
+    # =========================================
+    # Configure MicroK8s to trust insecure registry
+    # =========================================
+    - name: Create MicroK8s containerd hosts directory
+      ansible.builtin.file:
+        path: /var/snap/microk8s/current/args/certs.d/{{ registry_domain }}
+        state: directory
+        mode: '0755'
+
+    - name: Configure MicroK8s to trust registry
+      ansible.builtin.copy:
+        content: |
+          server = "https://{{ registry_domain }}"
+          
+          [host."https://{{ registry_domain }}"]
+            capabilities = ["pull", "resolve", "push"]
+            skip_verify = true
+        dest: /var/snap/microk8s/current/args/certs.d/{{ registry_domain }}/hosts.toml
+        mode: '0644'
+      notify: Restart MicroK8s
+
+    # =========================================
+    # Save registry credentials
+    # =========================================
+    - name: Save registry credentials
+      ansible.builtin.copy:
+        content: |
+          # Container Registry Credentials
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          Registry URL:  https://{{ registry_domain }}
+          Username:      {{ registry_username }}
+          Password:      {{ registry_password }}
+          
+          Docker Login:
+            docker login {{ registry_domain }} -u {{ registry_username }} -p '{{ registry_password }}'
+        dest: /root/.fundamental-credentials/registry-credentials.txt
+        mode: '0600'
+      no_log: true
+
+    # =========================================
+    # Update Kubernetes secrets with real credentials
+    # =========================================
+    - name: Update registry secret in fundamental-dev
+      ansible.builtin.shell: |
+        microk8s kubectl create secret docker-registry registry-credentials \
+          --namespace=fundamental-dev \
+          --docker-server='{{ registry_domain }}' \
+          --docker-username='{{ registry_username }}' \
+          --docker-password='{{ registry_password }}' \
+          --dry-run=client -o yaml | microk8s kubectl apply -f -
+      no_log: true
+
+    - name: Update registry secret in fundamental-prod
+      ansible.builtin.shell: |
+        microk8s kubectl create secret docker-registry registry-credentials \
+          --namespace=fundamental-prod \
+          --docker-server='{{ registry_domain }}' \
+          --docker-username='{{ registry_username }}' \
+          --docker-password='{{ registry_password }}' \
+          --dry-run=client -o yaml | microk8s kubectl apply -f -
+      no_log: true
+
+    # =========================================
+    # Verification
+    # =========================================
+    - name: Test nginx configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Ensure nginx is running
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Display registry info
+      ansible.builtin.debug:
+        msg:
+          - "✅ Registry proxy configured"
+          - "🌐 URL: https://{{ registry_domain }}"
+          - "👤 Username: {{ registry_username }}"
+          - "🔑 Credentials saved to: /root/.fundamental-credentials/registry-credentials.txt"
+          - ""
+          - "⚠️  Note: Using self-signed certificate"
+          - "For GitHub Actions, you may need to configure Docker to trust this registry"
+
+    # =========================================
+    # Fetch credentials
+    # =========================================
+    - name: Fetch registry credentials to local machine
+      ansible.builtin.fetch:
+        src: /root/.fundamental-credentials/registry-credentials.txt
+        dest: "{{ playbook_dir }}/../.credentials/{{ inventory_hostname }}-registry.txt"
+        flat: true
+      no_log: true
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+
+    - name: Restart MicroK8s
+      ansible.builtin.command: microk8s stop && microk8s start
+      async: 300
+      poll: 10
