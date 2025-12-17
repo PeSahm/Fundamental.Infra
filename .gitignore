@@ -3,6 +3,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Ansible credentials (NEVER commit these!)
+ansible/.credentials/
+.credentials/
+
 # User-specific files
 *.rsuser
 *.suo
