@@ -156,6 +156,7 @@ migrator:
   enabled: true
   
   image:
+    repository: registry.academind.ir/fundamental-migrations
     tag: "1.0.0"
   
   resources:

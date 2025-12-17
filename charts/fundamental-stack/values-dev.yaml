@@ -95,8 +95,9 @@ frontend:
 migrator:
   enabled: true
   
-  # Use dev backend image for migrations
+  # Dedicated migrations image
   image:
+    repository: registry.academind.ir/fundamental-migrations
     tag: "dev-latest"
   
   resources:

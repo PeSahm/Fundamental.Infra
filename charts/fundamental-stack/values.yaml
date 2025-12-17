@@ -255,16 +255,14 @@ frontend:
 migrator:
   enabled: true
   
-  # Use same image as backend by default
+  # Dedicated migrations image (built from Dockerfile.migrations)
   image:
-    repository: ""  # defaults to backend.image.repository
+    repository: registry.academind.ir/fundamental-migrations
     pullPolicy: IfNotPresent
-    tag: ""  # defaults to backend.image.tag
+    tag: ""  # defaults to Chart.appVersion
   
-  # Custom command for migrations
+  # Custom command for migrations (optional - image has default ENTRYPOINT)
   command: []
-  #  - dotnet
-  #  - Fundamental.Infrastructure.Migrations.dll
   
   args: []
   

@@ -9,9 +9,9 @@ Hooks:
 - pre-upgrade: Run migrations on upgrade
 
 For .NET Developers:
-- This is like running: dotnet ef database update
-- But in a Kubernetes Job that runs before deployment
-- Ensures database schema is ready before pods start
+- Runs the Migrations project with "migrate" argument
+- Ensures database schema is ready before API pods start
+- Uses separate Docker image built from Dockerfile.migrations
 
 Security:
 - Same security context as backend (non-root)
@@ -97,25 +97,15 @@ spec:
       
       containers:
         - name: migrator
-          # Use the same image as backend, but run migrations
-          image: "{{ .Values.migrator.image.repository | default .Values.backend.image.repository }}:{{ .Values.migrator.image.tag | default .Values.backend.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.migrator.image.pullPolicy | default .Values.backend.image.pullPolicy }}
+          # Use dedicated migrations image (built from Dockerfile.migrations)
+          image: "{{ .Values.migrator.image.repository }}:{{ .Values.migrator.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.migrator.image.pullPolicy | default "IfNotPresent" }}
           
-          # Override command to run migrations
+          # The migrations image already has ENTRYPOINT ["dotnet", "Migrations.dll", "migrate"]
+          # No need to override command unless custom behavior is needed
           {{- if .Values.migrator.command }}
           command:
             {{- toYaml .Values.migrator.command | nindent 12 }}
-          {{- else }}
-          command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Starting database migration..."
-              # For .NET projects, this would typically be:
-              # dotnet ef database update
-              # Or a custom migration entry point:
-              dotnet Fundamental.Infrastructure.Migrations.dll
-              echo "Migration completed successfully!"
           {{- end }}
           
           {{- if .Values.migrator.args }}
@@ -146,7 +136,7 @@ spec:
                   name: {{ include "fundamental-stack.postgresql.secretName" . }}
                   key: {{ include "fundamental-stack.postgresql.passwordKey" . }}
             
-            # Connection string
+            # Connection string for EF Core
             - name: ConnectionStrings__DefaultConnection
               value: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
             
