@@ -15,7 +15,7 @@ IMPORTANT: This ingress references a service in ANOTHER namespace
 (container-registry). This is done using ExternalName service.
 =============================================================================
 */}}
-{{- if .Values.registry.ingress.enabled }}
+{{- if .Values.registryIngress.enabled }}
 ---
 {{/*
 First, create an ExternalName service to reference the registry in another namespace.
@@ -31,32 +31,11 @@ metadata:
     app.kubernetes.io/component: registry
 spec:
   type: ExternalName
-  externalName: {{ .Values.registry.service.name }}.{{ .Values.registry.service.namespace }}.svc.cluster.local
+  externalName: {{ .Values.registryIngress.service.name }}.{{ .Values.registryIngress.service.namespace }}.svc.cluster.local
   ports:
-    - port: {{ .Values.registry.service.port | default 5000 }}
-      targetPort: {{ .Values.registry.service.port | default 5000 }}
+    - port: {{ .Values.registryIngress.service.port | default 5000 }}
+      targetPort: {{ .Values.registryIngress.service.port | default 5000 }}
       protocol: TCP
----
-{{/*
-Secret for Basic Authentication
-This should be created manually on the server or via external-secrets
-The format is: htpasswd -Bbn username password | base64
-*/}}
-{{- if not .Values.registry.auth.existingSecret }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ include "fundamental-stack.fullname" . }}-registry-auth
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
-    app.kubernetes.io/component: registry
-type: Opaque
-data:
-  # This is a placeholder - MUST be replaced with real htpasswd data
-  # Generate with: htpasswd -Bbn $REGISTRY_USER $REGISTRY_PASSWORD | base64 -w 0
-  auth: {{ .Values.registry.auth.htpasswd | default "cGxhY2Vob2xkZXI=" | quote }}
-{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -66,54 +45,22 @@ metadata:
   labels:
     {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
     app.kubernetes.io/component: registry
+  {{- with .Values.registryIngress.annotations }}
   annotations:
-    kubernetes.io/ingress.class: {{ .Values.ingress.className | default "nginx" | quote }}
-    
-    # TLS with cert-manager
-    {{- if .Values.registry.ingress.tls.enabled }}
-    {{- if .Values.registry.ingress.tls.certManager.enabled }}
-    cert-manager.io/cluster-issuer: {{ .Values.registry.ingress.tls.certManager.clusterIssuer | default "letsencrypt-prod" | quote }}
-    {{- end }}
-    {{- end }}
-    
-    # Basic Authentication - REQUIRED for registry security
-    nginx.ingress.kubernetes.io/auth-type: "basic"
-    nginx.ingress.kubernetes.io/auth-secret: {{ .Values.registry.auth.existingSecret | default (printf "%s-registry-auth" (include "fundamental-stack.fullname" .)) | quote }}
-    nginx.ingress.kubernetes.io/auth-realm: "Container Registry Authentication"
-    
-    # Container registry specific settings
-    # Large body size for container image layers (up to 2GB)
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
-    
-    # Chunked transfer encoding for large uploads
-    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
-    
-    # SSL settings
-    {{- if .Values.registry.ingress.tls.enabled }}
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    {{- end }}
-    
-    # Backend protocol
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    
-    {{- with .Values.registry.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
 spec:
-  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  ingressClassName: {{ .Values.registryIngress.className | default "nginx" }}
   
-  {{- if .Values.registry.ingress.tls.enabled }}
+  {{- if .Values.registryIngress.tls }}
   tls:
     - hosts:
-        - {{ .Values.registry.ingress.host | quote }}
-      secretName: {{ .Values.registry.ingress.tls.secretName | default (printf "%s-registry-tls" (include "fundamental-stack.fullname" .)) }}
+        - {{ .Values.registryIngress.host | quote }}
+      secretName: {{ .Values.registryIngress.tls.secretName | default (printf "%s-registry-tls" (include "fundamental-stack.fullname" .)) }}
   {{- end }}
   
   rules:
-    - host: {{ .Values.registry.ingress.host | quote }}
+    - host: {{ .Values.registryIngress.host | quote }}
       http:
         paths:
           - path: /
@@ -123,5 +70,5 @@ spec:
                 # Use the ExternalName service we created above
                 name: {{ include "fundamental-stack.fullname" . }}-registry-external
                 port:
-                  number: {{ .Values.registry.service.port | default 5000 }}
+                  number: {{ .Values.registryIngress.service.port | default 5000 }}
 {{- end }}
