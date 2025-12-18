@@ -54,6 +54,31 @@
       delay: 10
 
     # =========================================
+    # Configure ArgoCD for insecure mode (required for ingress)
+    # =========================================
+    - name: Patch ArgoCD server for insecure mode (disable internal TLS)
+      ansible.builtin.shell: |
+        microk8s kubectl -n {{ argocd_namespace }} patch configmap argocd-cmd-params-cm \
+          --type merge \
+          -p '{"data":{"server.insecure":"true"}}' || \
+        microk8s kubectl -n {{ argocd_namespace }} create configmap argocd-cmd-params-cm \
+          --from-literal=server.insecure=true
+      register: patch_result
+      changed_when: true
+      failed_when: false
+
+    - name: Restart ArgoCD server to apply insecure mode
+      ansible.builtin.command: >
+        microk8s kubectl rollout restart deployment argocd-server -n {{ argocd_namespace }}
+      changed_when: true
+
+    - name: Wait for ArgoCD server restart
+      ansible.builtin.command: >
+        microk8s kubectl rollout status deployment/argocd-server
+        -n {{ argocd_namespace }} --timeout=120s
+      changed_when: false
+
+    # =========================================
     # Configure ArgoCD Ingress
     # =========================================
     - name: Create ArgoCD Ingress
@@ -65,9 +90,10 @@
             name: argocd-server-ingress
             namespace: {{ argocd_namespace }}
             annotations:
-              nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-              nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
               cert-manager.io/cluster-issuer: "letsencrypt-prod"
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+              # ArgoCD runs in insecure mode, so backend is HTTP
+              nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
           spec:
             ingressClassName: public
             rules:
@@ -80,7 +106,7 @@
                         service:
                           name: argocd-server
                           port:
-                            number: 443
+                            number: 80
             tls:
               - hosts:
                   - {{ argocd_domain }}
@@ -125,19 +151,6 @@
         url: https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
         dest: /usr/local/bin/argocd
         mode: '0755'
-
-    # =========================================
-    # Configure ArgoCD for insecure mode (for HTTP ingress)
-    # =========================================
-    - name: Patch ArgoCD server for insecure mode
-      ansible.builtin.command: >
-        microk8s kubectl patch deployment argocd-server
-        -n {{ argocd_namespace }}
-        --type='json'
-        -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--insecure"}]'
-      register: patch_result
-      changed_when: "'patched' in patch_result.stdout"
-      failed_when: false
 
     # =========================================
     # Verification
