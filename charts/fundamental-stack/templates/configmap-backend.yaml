@@ -19,9 +19,16 @@ data:
   # App uses GetConnectionString("FundamentalDbContext")
   ConnectionStrings__FundamentalDbContext: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
   
-  # Redis connection
+  # Redis configuration - uses Redis section, not ConnectionStrings
   {{- if .Values.redis.enabled }}
-  ConnectionStrings__Redis: "{{ include "fundamental-stack.redis.host" . }}:{{ include "fundamental-stack.redis.port" . }},password=$(REDIS_PASSWORD)"
+  Redis__ConnectionString: "{{ include "fundamental-stack.redis.host" . }}:{{ include "fundamental-stack.redis.port" . }}"
+  Redis__Password: "$(REDIS_PASSWORD)"
+  Redis__DefaultDatabase: "0"
+  Redis__ConnectTimeout: "5000"
+  Redis__ConnectRetry: "3"
+  Redis__KeepAlive: "60"
+  Redis__AbortOnConnectFail: "false"
+  Redis__ConfigCheckSeconds: "60"
   {{- end }}
   
   # Application settings
