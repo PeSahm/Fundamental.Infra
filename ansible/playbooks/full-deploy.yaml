@@ -6,9 +6,10 @@
 # This playbook runs all setup steps in the correct order:
 # 1. VPS Setup (Docker, MicroK8s, UFW)
 # 2. Registry Proxy Setup
-# 3. Kubernetes Secrets
-# 4. ArgoCD Installation
-# 5. Application Deployment
+# 3. Cert-Manager Setup (ClusterIssuers)
+# 4. Kubernetes Secrets
+# 5. ArgoCD Installation
+# 6. Application Deployment
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
@@ -16,6 +17,7 @@
 # Or run individual playbooks:
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-vps.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-registry-proxy.yaml
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-cert-manager.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-kubernetes-secrets.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-argocd.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/deploy-applications.yaml
@@ -26,13 +28,16 @@
 - name: "Step 2: Setup Registry Proxy"
   ansible.builtin.import_playbook: setup-registry-proxy.yaml
 
-- name: "Step 3: Setup Kubernetes Secrets"
+- name: "Step 3: Setup Cert-Manager ClusterIssuers"
+  ansible.builtin.import_playbook: setup-cert-manager.yaml
+
+- name: "Step 4: Setup Kubernetes Secrets"
   ansible.builtin.import_playbook: setup-kubernetes-secrets.yaml
 
-- name: "Step 4: Setup ArgoCD"
+- name: "Step 5: Setup ArgoCD"
   ansible.builtin.import_playbook: setup-argocd.yaml
 
-- name: "Step 5: Deploy Applications"
+- name: "Step 6: Deploy Applications"
   ansible.builtin.import_playbook: deploy-applications.yaml
 
 # Final summary is displayed by deploy-applications.yaml

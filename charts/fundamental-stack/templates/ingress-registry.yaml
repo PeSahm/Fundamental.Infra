@@ -50,7 +50,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  ingressClassName: {{ .Values.registryIngress.className | default "nginx" }}
+  ingressClassName: {{ .Values.registryIngress.className | default "public" }}
   
   {{- if .Values.registryIngress.tls }}
   tls:

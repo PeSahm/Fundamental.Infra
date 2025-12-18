@@ -39,6 +39,8 @@ microk8s_addons:
   - storage
   - registry
   - ingress
+  - cert-manager
+  - hostpath-storage
 
 # Docker Configuration
 docker_users: []

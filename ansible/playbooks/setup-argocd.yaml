@@ -67,8 +67,9 @@
             annotations:
               nginx.ingress.kubernetes.io/ssl-passthrough: "true"
               nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+              cert-manager.io/cluster-issuer: "letsencrypt-prod"
           spec:
-            ingressClassName: nginx
+            ingressClassName: public
             rules:
               - host: {{ argocd_domain }}
                 http:
@@ -80,6 +81,10 @@
                           name: argocd-server
                           port:
                             number: 443
+            tls:
+              - hosts:
+                  - {{ argocd_domain }}
+                secretName: argocd-tls
         dest: /tmp/argocd-ingress.yaml
         mode: '0644'
 
