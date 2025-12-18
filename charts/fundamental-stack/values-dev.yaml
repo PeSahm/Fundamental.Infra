@@ -220,6 +220,10 @@ redis:
 networkPolicies:
   # Enable network policies even in dev for testing
   enabled: true
+  # MicroK8s ingress controller namespace and pod labels
+  ingressNamespace: "ingress"
+  ingressControllerLabels:
+    name: nginx-ingress-microk8s
 
 # =============================================================================
 # Service Account (Development)
