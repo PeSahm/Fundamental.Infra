@@ -41,6 +41,8 @@ microk8s_addons:
   - ingress
   - cert-manager
   - hostpath-storage
+  - dashboard
+  - metrics-server
 
 # Docker Configuration
 docker_users: []

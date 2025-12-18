@@ -377,6 +377,7 @@ When Backend/Frontend CI triggers the `update-image-tag` event:
 | Backend API | https://dev.academind.ir/api | https://sahmbaz.ir/api |
 | ArgoCD | https://argocd.academind.ir | (same) |
 | Registry | https://registry.academind.ir | (same) |
+| K8s Dashboard | https://k8s.academind.ir | (same) |
 
 ### SSH Access
 
@@ -414,6 +415,107 @@ PostgreSQL is exposed on NodePort for debugging:
 psql -h 5.10.248.55 -p 30432 -U fundamental -d fundamental_dev
 # Password: WsqVTUish0Lf8uUvzySQlskd
 ```
+
+---
+
+## Credential Management
+
+### Overview
+
+Credentials in this system are managed at multiple layers:
+
+| Layer | Tool | Can View? | Can Change? | Persistence |
+|-------|------|-----------|-------------|-------------|
+| **Kubernetes Dashboard** | Web UI | ✅ Yes | ✅ Yes | ⚠️ Until sync |
+| **ArgoCD Dashboard** | Web UI | ❌ No | ❌ No | N/A |
+| **Kubernetes Secrets** | `kubectl` | ✅ Yes | ✅ Yes | ⚠️ Until sync |
+| **Helm Values Files** | Git repo | ✅ Yes | ✅ Yes | ✅ Permanent |
+
+### Management Tools
+
+#### 1. Kubernetes Dashboard (Recommended for UI)
+
+**URL:** https://k8s.academind.ir
+
+The Kubernetes Dashboard provides a web UI to:
+- View and edit Secrets (credentials)
+- Monitor pods and logs
+- Manage deployments
+- View cluster resources
+
+**Login:**
+```bash
+# Get dashboard token
+ssh root@5.10.248.55
+cat /root/.fundamental-credentials/kubernetes-dashboard-token
+
+# Or retrieve directly
+microk8s kubectl describe secret -n kube-system microk8s-dashboard-token | grep "^token:"
+```
+
+#### 2. kubectl (Command Line)
+
+**View all secrets:**
+```bash
+# List secrets in a namespace
+microk8s kubectl get secrets -n fundamental-dev
+microk8s kubectl get secrets -n fundamental-prod
+
+# View specific secret (encoded)
+microk8s kubectl get secret postgresql-credentials -n fundamental-dev -o yaml
+
+# Decode a specific value
+microk8s kubectl get secret postgresql-credentials -n fundamental-dev \
+  -o jsonpath='{.data.password}' | base64 -d
+```
+
+**View all credentials at once:**
+```bash
+# PostgreSQL
+echo "Username: $(microk8s kubectl get secret postgresql-credentials -n fundamental-dev -o jsonpath='{.data.username}' | base64 -d)"
+echo "Password: $(microk8s kubectl get secret postgresql-credentials -n fundamental-dev -o jsonpath='{.data.password}' | base64 -d)"
+
+# Redis
+echo "Password: $(microk8s kubectl get secret redis-credentials -n fundamental-dev -o jsonpath='{.data.password}' | base64 -d)"
+```
+
+**Change credentials (temporary - will be overwritten on ArgoCD sync):**
+```bash
+# Patch a secret
+microk8s kubectl patch secret postgresql-credentials -n fundamental-dev \
+  --type='json' -p='[{"op":"replace","path":"/data/password","value":"'$(echo -n "NEW_PASSWORD" | base64)'"}]'
+```
+
+#### 3. Helm Values (Permanent Changes)
+
+For permanent credential changes, edit the Helm values files:
+
+```bash
+# Development credentials
+vim charts/fundamental-stack/values-dev.yaml
+
+# Production credentials
+vim charts/fundamental-stack/values-prod.yaml
+```
+
+Then commit, push, and ArgoCD will sync the changes.
+
+### Current Credentials Reference
+
+| Service | Environment | Username | Password/Token |
+|---------|-------------|----------|----------------|
+| PostgreSQL | Dev/Prod | `fundamental` | `WsqVTUish0Lf8uUvzySQlskd` |
+| Redis | Dev/Prod | N/A | `W3KozHkqRybVdXxeJHxThz4K` |
+| Registry | Shared | `admin` | `Mostafa313@#` |
+| ArgoCD | Shared | `admin` | `kKl04Nlsg8B10LbK` |
+| K8s Dashboard | Shared | Token | See `/root/.fundamental-credentials/kubernetes-dashboard-token` |
+
+### Database Connection Details
+
+| Environment | Host | Port | Database | 
+|-------------|------|------|----------|
+| Dev (external) | 5.10.248.55 | 30432 | fundamental_dev |
+| Prod (internal) | `*.fundamental-prod.svc.cluster.local` | 5432 | fundamental_prod |
 
 ---
 

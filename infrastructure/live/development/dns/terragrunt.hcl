@@ -42,12 +42,14 @@ inputs = {
   
   # Development subdomains (different from production)
   # registry and argocd are shared between dev/prod
-  subdomains = ["dev", "dev-api", "argocd", "registry"]
+  # k8s is for Kubernetes Dashboard
+  subdomains = ["dev", "dev-api", "argocd", "registry", "k8s"]
   
   # Enable Cloudflare proxy (orange cloud) for DDoS protection
   proxied = true
   
   # Registry must NOT be proxied - Docker registry doesn't work through Cloudflare proxy
   # Cloudflare intercepts HTTPS and breaks Docker's authentication flow
-  non_proxied_subdomains = ["registry"]
+  # k8s dashboard must NOT be proxied - Kubernetes Dashboard uses websockets
+  non_proxied_subdomains = ["registry", "k8s"]
 }

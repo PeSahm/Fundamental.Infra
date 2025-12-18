@@ -1,0 +1,125 @@
+---
+# Kubernetes Dashboard Setup Playbook
+# ====================================
+# Sets up Kubernetes Dashboard with Ingress for external access
+#
+# The dashboard provides a web UI for:
+# - Viewing and managing Kubernetes resources
+# - Viewing and editing Secrets (credentials)
+# - Monitoring pod logs and status
+# - Managing deployments
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-kubernetes-dashboard.yaml
+
+- name: Setup Kubernetes Dashboard
+  hosts: vps
+  become: true
+  gather_facts: false
+
+  vars:
+    dashboard_domain: "k8s.academind.ir"
+    dashboard_namespace: "kube-system"
+    cluster_issuer: "letsencrypt-prod"
+
+  tasks:
+    # =========================================
+    # Enable Dashboard Addon (if not enabled)
+    # =========================================
+    - name: Enable MicroK8s dashboard addon
+      ansible.builtin.command: microk8s enable dashboard
+      register: dashboard_enable
+      changed_when: "'is already enabled' not in dashboard_enable.stdout"
+
+    - name: Wait for dashboard to be ready
+      ansible.builtin.command: >
+        microk8s kubectl wait --for=condition=available
+        --timeout=120s deployment/kubernetes-dashboard
+        -n {{ dashboard_namespace }}
+      changed_when: false
+      retries: 3
+      delay: 10
+
+    # =========================================
+    # Create Dashboard Ingress
+    # =========================================
+    - name: Create Dashboard Ingress manifest
+      ansible.builtin.copy:
+        dest: /tmp/dashboard-ingress.yaml
+        mode: "0644"
+        content: |
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: kubernetes-dashboard-ingress
+            namespace: {{ dashboard_namespace }}
+            annotations:
+              nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+              nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+              cert-manager.io/cluster-issuer: "{{ cluster_issuer }}"
+          spec:
+            ingressClassName: nginx
+            tls:
+              - hosts:
+                  - {{ dashboard_domain }}
+                secretName: k8s-dashboard-tls
+            rules:
+              - host: {{ dashboard_domain }}
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: kubernetes-dashboard
+                          port:
+                            number: 443
+
+    - name: Apply Dashboard Ingress
+      ansible.builtin.command: microk8s kubectl apply -f /tmp/dashboard-ingress.yaml
+      register: ingress_result
+      changed_when: "'created' in ingress_result.stdout or 'configured' in ingress_result.stdout"
+
+    - name: Clean up temporary manifest
+      ansible.builtin.file:
+        path: /tmp/dashboard-ingress.yaml
+        state: absent
+
+    # =========================================
+    # Get Dashboard Token
+    # =========================================
+    - name: Get dashboard token
+      ansible.builtin.shell: |
+        microk8s kubectl describe secret -n {{ dashboard_namespace }} microk8s-dashboard-token | grep "^token:" | awk '{print $2}'
+      register: dashboard_token
+      changed_when: false
+
+    - name: Save dashboard token to credentials file
+      ansible.builtin.copy:
+        dest: "{{ credentials_dir }}/kubernetes-dashboard-token"
+        content: "{{ dashboard_token.stdout }}"
+        mode: "0600"
+
+    # =========================================
+    # Display Summary
+    # =========================================
+    - name: Display dashboard access information
+      ansible.builtin.debug:
+        msg:
+          - "========================================"
+          - "Kubernetes Dashboard Setup Complete!"
+          - "========================================"
+          - ""
+          - "Dashboard URL: https://{{ dashboard_domain }}"
+          - ""
+          - "Login with token:"
+          - "{{ dashboard_token.stdout }}"
+          - ""
+          - "Token saved to: {{ credentials_dir }}/kubernetes-dashboard-token"
+          - ""
+          - "Features available:"
+          - "  - View/Edit Secrets (credentials)"
+          - "  - Monitor pods and logs"
+          - "  - Manage deployments"
+          - "  - View cluster resources"
+          - "========================================"

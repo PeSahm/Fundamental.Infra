@@ -37,7 +37,10 @@
 - name: "Step 5: Setup ArgoCD"
   ansible.builtin.import_playbook: setup-argocd.yaml
 
-- name: "Step 6: Deploy Applications"
+- name: "Step 6: Setup Kubernetes Dashboard"
+  ansible.builtin.import_playbook: setup-kubernetes-dashboard.yaml
+
+- name: "Step 7: Deploy Applications"
   ansible.builtin.import_playbook: deploy-applications.yaml
 
 # Final summary is displayed by deploy-applications.yaml
