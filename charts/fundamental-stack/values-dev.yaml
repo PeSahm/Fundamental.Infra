@@ -120,6 +120,9 @@ ingress:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     # Required for regex path matching
     nginx.ingress.kubernetes.io/use-regex: "true"
+    # Rewrite /api/* to /* when forwarding to backend
+    # The regex captures: /api(/|$)(.*) → $2 is everything after /api
+    nginx.ingress.kubernetes.io/rewrite-target: "/$2"
   
   hosts:
     - host: dev.academind.ir
