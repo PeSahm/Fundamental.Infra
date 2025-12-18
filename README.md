@@ -508,7 +508,19 @@ Then commit, push, and ArgoCD will sync the changes.
 | Redis | Dev/Prod | N/A | `W3KozHkqRybVdXxeJHxThz4K` |
 | Registry | Shared | `admin` | `Mostafa313@#` |
 | ArgoCD | Shared | `admin` | `kKl04Nlsg8B10LbK` |
-| K8s Dashboard | Shared | Token | See `/root/.fundamental-credentials/kubernetes-dashboard-token` |
+| K8s Dashboard | Shared | Token | See below |
+
+**Kubernetes Dashboard Token:**
+```
+eyJhbGciOiJSUzI1NiIsImtpZCI6IkNJeXBIYTBueVVTZWtNUm9nQm1oZTdzV0REdng1MHA3M290SFotUHdtN1UifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJtaWNyb2s4cy1kYXNoYm9hcmQtdG9rZW4iLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGVmYXVsdCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImFiMDUyNWZlLTgxYTMtNDBiYi04NTdhLTkwM2Q2MmY1NTUwMSIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDprdWJlLXN5c3RlbTpkZWZhdWx0In0.feJ4dxFXItDMGCOQBpHqdtYC_M3HWCBc5_PKvUIW2_opH2GQUAcBgehzBl30Sg6vJb8C95Bd7vFbFZ_knIpEhBF4xQbRSoV6NEf_9Lq4BaiOKM_aicC7QwdPvLuIkxtjOIG-yqHy5qSrUVu-1W2WqVoOBgPGeYIXjANDZxNgTrQ5N6qMS_AbMPPdwe81cbPdgIJN8jbW8NeIaISE4tqmkoUvXTqaxL8zUqIHgimNC3qIHM6WkirsoNk6CxTi0ul6iL0basrRNP1XRBr83FAFAp6n3mECc6Q99wR8_N0_Sh8JJMqTL5TZSyt0NDdRDJOVZVSjDHaTde9Qm-DQoKW5Fw
+```
+
+**To refresh the token (if needed):**
+```bash
+ssh root@5.10.248.55 'microk8s kubectl describe secret -n kube-system microk8s-dashboard-token | grep "^token:"'
+# Or from saved file:
+ssh root@5.10.248.55 'cat /root/.fundamental-credentials/kubernetes-dashboard-token'
+```
 
 ### Database Connection Details
 
