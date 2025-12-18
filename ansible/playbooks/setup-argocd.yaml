@@ -7,8 +7,8 @@
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-argocd.yaml
 #
 # After running:
-#   - ArgoCD UI available at: https://argocd.academind.ir
-#   - Admin password saved to /root/.fundamental-credentials/argocd-password.txt
+#   - ArgoCD UI available at: https://{{ argocd_domain }}
+#   - Admin password saved to {{ credentials_dir }}/argocd-password.txt
 
 - name: Setup ArgoCD
   hosts: vps
@@ -18,7 +18,7 @@
   vars:
     argocd_namespace: argocd
     argocd_version: stable
-    argocd_domain: argocd.academind.ir
+    # argocd_domain loaded from group_vars/all.yaml
 
   tasks:
     # =========================================

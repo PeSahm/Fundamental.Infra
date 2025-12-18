@@ -20,10 +20,9 @@
   gather_facts: true
 
   vars:
-    registry_domain: registry.academind.ir
+    # registry_domain loaded from group_vars/all.yaml
     microk8s_registry_port: 32000
-    # Generate htpasswd credentials
-    registry_username: fundamental
+    # Generate htpasswd credentials (username from group_vars)
     registry_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
 
   tasks:

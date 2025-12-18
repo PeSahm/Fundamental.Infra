@@ -1,20 +1,13 @@
 # =============================================================================
 # Root Terragrunt Configuration
 # =============================================================================
-# This is the root terragrunt.hcl file that contains:
-# - Remote state configuration (local by default)
-# - Global inputs that are passed down to all child modules
-# - Common terraform settings
+# AUTO-GENERATED from config.yaml - DO NOT EDIT MANUALLY
+# Run: ./scripts/generate-config.sh to regenerate
 # =============================================================================
-
-# -----------------------------------------------------------------------------
-# Global Variables (DRY - Define Once, Use Everywhere)
-# -----------------------------------------------------------------------------
-# These values are defined here and passed to all child modules
 
 locals {
   # ==========================================================================
-  # INFRASTRUCTURE CONFIGURATION
+  # INFRASTRUCTURE CONFIGURATION (from config.yaml)
   # ==========================================================================
   
   # VPS Server Configuration
@@ -28,7 +21,7 @@ locals {
   github_owner = "PeSahm"
   
   # Subdomains to create DNS records for
-  subdomains = ["www", "api", "argocd", "registry"]
+  subdomains = ["www", "api", "dev", "argocd", "registry"]
   
   # Container Registry Configuration
   container_registry = "registry.academind.ir"
@@ -52,8 +45,6 @@ locals {
 # -----------------------------------------------------------------------------
 # Remote State Configuration
 # -----------------------------------------------------------------------------
-# Using local backend by default. For team environments, configure S3/GCS.
-
 remote_state {
   backend = "local"
   
@@ -68,37 +59,17 @@ remote_state {
 }
 
 # -----------------------------------------------------------------------------
-# Alternative: S3 Remote State (Uncomment for team environments)
-# -----------------------------------------------------------------------------
-# remote_state {
-#   backend = "s3"
-#   
-#   config = {
-#     bucket         = "fundamental-terraform-state"
-#     key            = "${path_relative_to_include()}/terraform.tfstate"
-#     region         = "eu-central-1"
-#     encrypt        = true
-#     dynamodb_table = "terraform-locks"
-#   }
-#   
-#   generate = {
-#     path      = "backend.tf"
-#     if_exists = "overwrite_terragrunt"
-#   }
-# }
-
-# -----------------------------------------------------------------------------
 # Generate Provider Versions
 # -----------------------------------------------------------------------------
 generate "versions" {
   path      = "versions.tf"
   if_exists = "overwrite_terragrunt"
   
-  contents = <<EOF
+  contents = <<VERSIONS
 terraform {
   required_version = ">= 1.5.0"
 }
-EOF
+VERSIONS
 }
 
 # -----------------------------------------------------------------------------

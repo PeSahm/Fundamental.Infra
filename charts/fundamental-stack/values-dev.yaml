@@ -1,14 +1,8 @@
 # =============================================================================
 # Development Environment Values
 # =============================================================================
-# Override these values for development environment.
-#
-# Usage:
-#   helm install fundamental . -f values.yaml -f values-dev.yaml
-#
-# For .NET Developers:
-# - This is like appsettings.Development.json
-# - Overrides default values for dev environment
+# AUTO-GENERATED from config.yaml - DO NOT EDIT MANUALLY
+# Run: ./scripts/generate-config.sh to regenerate
 # =============================================================================
 
 # Global settings
@@ -28,10 +22,8 @@ backend:
     repository: registry.academind.ir/fundamental-backend
     tag: "prod-latest"
   
-  # Development environment
   aspnetEnvironment: "Development"
   
-  # Lower resources for dev
   resources:
     limits:
       cpu: 500m
@@ -40,22 +32,18 @@ backend:
       cpu: 100m
       memory: 256Mi
   
-  # No autoscaling in dev
   autoscaling:
     enabled: false
   
-  # No PDB needed for single replica
   podDisruptionBudget:
     enabled: false
   
-  # Additional dev environment variables
   extraEnv:
     - name: ASPNETCORE_DETAILEDERRORS
       value: "true"
     - name: Logging__LogLevel__Default
       value: "Debug"
   
-  # Use existing secret for sensitive data
   secrets:
     existingSecret: "fundamental-backend-secrets"
     keys:
@@ -86,7 +74,6 @@ frontend:
   podDisruptionBudget:
     enabled: false
   
-  # Dev API endpoint
   apiBaseUrl: "/api"
 
 # =============================================================================
@@ -95,7 +82,6 @@ frontend:
 migrator:
   enabled: true
   
-  # Dedicated migrations image
   image:
     repository: registry.academind.ir/fundamental-migrations
     tag: "prod-latest"
@@ -118,7 +104,6 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # HSTS for security
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
@@ -126,9 +111,6 @@ ingress:
   hosts:
     - host: dev.academind.ir
       paths:
-        # Backend and Frontend paths are now in separate ingresses
-        # Backend: /api/* → backend (with rewrite)
-        # Frontend: /* → frontend (no rewrite)
         - path: /api
           pathType: Prefix
           service: backend
@@ -137,7 +119,7 @@ ingress:
           service: frontend
   
   tls:
-    - secretName: dev-academind-tls
+    - secretName: dev-academind-ir-tls
       hosts:
         - dev.academind.ir
 
@@ -226,9 +208,7 @@ redis:
 # Network Policies (Development)
 # =============================================================================
 networkPolicies:
-  # Enable network policies even in dev for testing
   enabled: true
-  # MicroK8s ingress controller namespace and pod labels
   ingressNamespace: "ingress"
   ingressControllerLabels:
     name: nginx-ingress-microk8s

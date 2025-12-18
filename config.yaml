@@ -1,0 +1,172 @@
+# =============================================================================
+# Fundamental Infrastructure - Central Configuration
+# =============================================================================
+# This is the SINGLE SOURCE OF TRUTH for all infrastructure configuration.
+# 
+# To change any value:
+#   1. Edit this file
+#   2. Run: ./scripts/generate-config.sh
+#   3. Commit and push changes
+#
+# The script will update:
+#   - Terragrunt variables (infrastructure/live/)
+#   - Ansible variables (ansible/group_vars/)
+#   - Helm values files (charts/fundamental-stack/)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Domain Configuration
+# -----------------------------------------------------------------------------
+domain:
+  # Base domain (without subdomain)
+  base: "academind.ir"
+  
+  # Subdomains for different services
+  subdomains:
+    # Production
+    prod:
+      frontend: ""           # Root domain (academind.ir)
+      api: "api"             # api.academind.ir
+      argocd: "argocd"       # argocd.academind.ir
+      registry: "registry"   # registry.academind.ir
+    
+    # Development
+    dev:
+      frontend: "dev"        # dev.academind.ir
+      api: "dev"             # dev.academind.ir/api (same as frontend, path-based)
+      argocd: "argocd"       # argocd.academind.ir (shared)
+      registry: "registry"   # registry.academind.ir (shared)
+
+# -----------------------------------------------------------------------------
+# VPS Server Configuration
+# -----------------------------------------------------------------------------
+vps:
+  ip: "5.10.248.55"
+  ssh_user: "root"
+  deploy_user: "deploy"
+
+# -----------------------------------------------------------------------------
+# GitHub Configuration
+# -----------------------------------------------------------------------------
+github:
+  owner: "PeSahm"
+  repositories:
+    backend: "Fundamental.Backend"
+    frontend: "Fundamental.FrontEnd"
+    infra: "Fundamental.Infra"
+
+# -----------------------------------------------------------------------------
+# Container Registry Configuration
+# -----------------------------------------------------------------------------
+registry:
+  # Username for authentication
+  username: "fundamental"
+  # Image names
+  images:
+    backend: "fundamental-backend"
+    frontend: "fundamental-frontend"
+    migrations: "fundamental-migrations"
+
+# -----------------------------------------------------------------------------
+# Kubernetes Configuration
+# -----------------------------------------------------------------------------
+kubernetes:
+  # Namespace names
+  namespaces:
+    dev: "fundamental-dev"
+    prod: "fundamental-prod"
+  
+  # Ingress class (MicroK8s uses 'public')
+  ingress_class: "public"
+  
+  # Cert-manager ClusterIssuer
+  cluster_issuer: "letsencrypt-prod"
+
+# -----------------------------------------------------------------------------
+# Database Configuration
+# -----------------------------------------------------------------------------
+database:
+  # PostgreSQL
+  postgres:
+    image: "postgres:17-alpine"
+    database_name:
+      dev: "fundamental_dev"
+      prod: "fundamental_prod"
+    username: "fundamental"
+  
+  # Redis
+  redis:
+    image: "redis:7-alpine"
+
+# -----------------------------------------------------------------------------
+# Application Configuration
+# -----------------------------------------------------------------------------
+application:
+  # .NET Environment
+  aspnet_environment:
+    dev: "Development"
+    prod: "Production"
+  
+  # Image tags
+  default_tag:
+    dev: "prod-latest"
+    prod: "prod-latest"
+
+# -----------------------------------------------------------------------------
+# Cloudflare Configuration
+# -----------------------------------------------------------------------------
+cloudflare:
+  # Zone ID (set via environment variable CLOUDFLARE_ZONE_ID)
+  # API Token (set via environment variable CLOUDFLARE_API_TOKEN)
+  
+  # Proxy settings
+  proxied_subdomains: ["", "www", "api", "dev", "argocd"]
+  non_proxied_subdomains: ["registry"]  # Docker registry doesn't work with proxy
+
+# -----------------------------------------------------------------------------
+# Resource Limits
+# -----------------------------------------------------------------------------
+resources:
+  dev:
+    backend:
+      cpu_limit: "500m"
+      memory_limit: "512Mi"
+      cpu_request: "100m"
+      memory_request: "256Mi"
+    frontend:
+      cpu_limit: "100m"
+      memory_limit: "128Mi"
+      cpu_request: "50m"
+      memory_request: "64Mi"
+    postgres:
+      cpu_limit: "300m"
+      memory_limit: "256Mi"
+      cpu_request: "50m"
+      memory_request: "128Mi"
+    redis:
+      cpu_limit: "100m"
+      memory_limit: "128Mi"
+      cpu_request: "25m"
+      memory_request: "64Mi"
+  
+  prod:
+    backend:
+      cpu_limit: "1000m"
+      memory_limit: "1Gi"
+      cpu_request: "200m"
+      memory_request: "512Mi"
+    frontend:
+      cpu_limit: "200m"
+      memory_limit: "256Mi"
+      cpu_request: "100m"
+      memory_request: "128Mi"
+    postgres:
+      cpu_limit: "500m"
+      memory_limit: "512Mi"
+      cpu_request: "100m"
+      memory_request: "256Mi"
+    redis:
+      cpu_limit: "200m"
+      memory_limit: "256Mi"
+      cpu_request: "50m"
+      memory_request: "128Mi"
