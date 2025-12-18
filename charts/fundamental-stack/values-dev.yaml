@@ -101,33 +101,12 @@ migrator:
       memory: 128Mi
 
 # =============================================================================
-# Ingress - Backend (Development)
+# Ingress (Development) - Overrides base values.yaml
 # =============================================================================
-backendIngress:
-  enabled: true
-  className: "public"
-  
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-  
-  hosts:
-    - host: dev.academind.ir
-      paths:
-        - path: /api
-          pathType: Prefix
-  
-  tls:
-    - secretName: dev-academind-ir-tls
-      hosts:
-        - dev.academind.ir
-
+# IMPORTANT: This section overrides the 'ingress' key from values.yaml
+# The templates use .Values.ingress.* not frontendIngress/backendIngress
 # =============================================================================
-# Ingress - Frontend (Development)
-# =============================================================================
-frontendIngress:
+ingress:
   enabled: true
   className: "public"
   
@@ -136,12 +115,19 @@ frontendIngress:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
   
   hosts:
     - host: dev.academind.ir
       paths:
         - path: /
           pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
   
   tls:
     - secretName: dev-academind-ir-tls
