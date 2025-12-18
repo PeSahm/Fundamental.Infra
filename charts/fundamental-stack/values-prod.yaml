@@ -3,6 +3,11 @@
 # =============================================================================
 # AUTO-GENERATED from config.yaml - DO NOT EDIT MANUALLY
 # Run: ./scripts/generate-config.sh to regenerate
+#
+# Environment: Production
+# Branch: main
+# Domain: sahmbaz.ir
+# Namespace: fundamental-prod
 # =============================================================================
 
 # Global settings
@@ -10,7 +15,8 @@ global:
   imagePullSecrets:
     - name: registry-credentials
   
-  domain: "academind.ir"
+  domain: "sahmbaz.ir"
+  environment: "production"
 
 # =============================================================================
 # Backend (Production)
@@ -97,9 +103,33 @@ migrator:
       memory: 256Mi
 
 # =============================================================================
-# Ingress (Production)
+# Ingress - Backend (Production)
 # =============================================================================
-ingress:
+backendIngress:
+  enabled: true
+  className: "public"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  
+  hosts:
+    - host: sahmbaz.ir
+      paths:
+        - path: /api
+          pathType: Prefix
+  
+  tls:
+    - secretName: sahmbaz-ir-tls
+      hosts:
+        - sahmbaz.ir
+
+# =============================================================================
+# Ingress - Frontend (Production)
+# =============================================================================
+frontendIngress:
   enabled: true
   className: "public"
   
@@ -111,44 +141,15 @@ ingress:
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
   
   hosts:
-    - host: academind.ir
+    - host: sahmbaz.ir
       paths:
-        - path: /api
-          pathType: Prefix
-          service: backend
         - path: /
           pathType: Prefix
-          service: frontend
   
   tls:
-    - secretName: academind-ir-tls
+    - secretName: sahmbaz-ir-tls
       hosts:
-        - academind.ir
-
-# =============================================================================
-# Registry Ingress (Production)
-# =============================================================================
-registryIngress:
-  enabled: true
-  className: "public"
-  
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/auth-type: "basic"
-    nginx.ingress.kubernetes.io/auth-secret: "registry-auth"
-    nginx.ingress.kubernetes.io/auth-realm: "Container Registry"
-  
-  host: registry.academind.ir
-  
-  service:
-    name: registry
-    namespace: container-registry
-    port: 5000
-  
-  tls:
-    secretName: registry-tls
+        - sahmbaz.ir
 
 # =============================================================================
 # PostgreSQL (Production)

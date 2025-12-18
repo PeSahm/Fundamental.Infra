@@ -3,6 +3,11 @@
 # =============================================================================
 # AUTO-GENERATED from config.yaml - DO NOT EDIT MANUALLY
 # Run: ./scripts/generate-config.sh to regenerate
+#
+# Environment: Development
+# Branch: develop
+# Domain: dev.academind.ir
+# Namespace: fundamental-dev
 # =============================================================================
 
 # Global settings
@@ -11,6 +16,7 @@ global:
     - name: registry-credentials
   
   domain: "dev.academind.ir"
+  environment: "development"
 
 # =============================================================================
 # Backend (Development)
@@ -20,7 +26,7 @@ backend:
   
   image:
     repository: registry.academind.ir/fundamental-backend
-    tag: "prod-latest"
+    tag: "dev-latest"
   
   aspnetEnvironment: "Development"
   
@@ -58,7 +64,7 @@ frontend:
   
   image:
     repository: registry.academind.ir/fundamental-frontend
-    tag: "prod-latest"
+    tag: "dev-latest"
   
   resources:
     limits:
@@ -84,7 +90,7 @@ migrator:
   
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "prod-latest"
+    tag: "dev-latest"
   
   resources:
     limits:
@@ -95,9 +101,33 @@ migrator:
       memory: 128Mi
 
 # =============================================================================
-# Ingress (Development)
+# Ingress - Backend (Development)
 # =============================================================================
-ingress:
+backendIngress:
+  enabled: true
+  className: "public"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  
+  hosts:
+    - host: dev.academind.ir
+      paths:
+        - path: /api
+          pathType: Prefix
+  
+  tls:
+    - secretName: dev-academind-ir-tls
+      hosts:
+        - dev.academind.ir
+
+# =============================================================================
+# Ingress - Frontend (Development)
+# =============================================================================
+frontendIngress:
   enabled: true
   className: "public"
   
@@ -106,47 +136,17 @@ ingress:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
-    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
   
   hosts:
     - host: dev.academind.ir
       paths:
-        - path: /api
-          pathType: Prefix
-          service: backend
         - path: /
           pathType: Prefix
-          service: frontend
   
   tls:
     - secretName: dev-academind-ir-tls
       hosts:
         - dev.academind.ir
-
-# =============================================================================
-# Registry Ingress (Development)
-# =============================================================================
-registryIngress:
-  enabled: true
-  className: "public"
-  
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/auth-type: "basic"
-    nginx.ingress.kubernetes.io/auth-secret: "registry-auth"
-    nginx.ingress.kubernetes.io/auth-realm: "Container Registry"
-  
-  host: registry.academind.ir
-  
-  service:
-    name: registry
-    namespace: container-registry
-    port: 5000
-  
-  tls:
-    secretName: registry-tls
 
 # =============================================================================
 # PostgreSQL (Development)

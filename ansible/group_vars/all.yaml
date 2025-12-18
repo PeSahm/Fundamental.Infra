@@ -6,22 +6,20 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Domain Configuration
-# -----------------------------------------------------------------------------
-domain_base: "academind.ir"
-registry_domain: "registry.academind.ir"
-argocd_domain: "argocd.academind.ir"
-
-# -----------------------------------------------------------------------------
 # VPS Configuration
 # -----------------------------------------------------------------------------
 vps_ip: "5.10.248.55"
+ansible_user: "root"
 
 # -----------------------------------------------------------------------------
-# Registry Configuration
+# Shared Services
 # -----------------------------------------------------------------------------
+registry_domain: "registry.academind.ir"
 registry_username: "fundamental"
 registry_external_host: "registry.academind.ir"
+
+argocd_domain: "argocd.academind.ir"
+argocd_namespace: "argocd"
 
 # -----------------------------------------------------------------------------
 # GitHub Configuration
@@ -34,6 +32,27 @@ registry_host: "registry.academind.ir"
 # -----------------------------------------------------------------------------
 ingress_class: "public"
 cluster_issuer: "letsencrypt-prod"
+
+# -----------------------------------------------------------------------------
+# Environment Configuration
+# -----------------------------------------------------------------------------
+environments:
+  dev:
+    domain: "dev.academind.ir"
+    namespace: "fundamental-dev"
+    branch: "develop"
+    image_tag: "dev-latest"
+  prod:
+    domain: "sahmbaz.ir"
+    namespace: "fundamental-prod"
+    branch: "main"
+    image_tag: "prod-latest"
+
+# -----------------------------------------------------------------------------
+# Default Environment (for single-env playbooks)
+# -----------------------------------------------------------------------------
+domain_base: "dev.academind.ir"
+default_namespace: "fundamental-dev"
 
 # -----------------------------------------------------------------------------
 # Credentials Directory
