@@ -36,8 +36,13 @@ inputs = {
   zone_id = get_env("CLOUDFLARE_ZONE_ID", "")
   
   # Development subdomains (different from production)
-  subdomains = ["dev", "dev-api", "dev-argocd", "dev-registry"]
+  # registry is shared between dev/prod for simplicity
+  subdomains = ["dev", "dev-api", "argocd", "registry"]
   
   # Enable Cloudflare proxy (orange cloud) for DDoS protection
   proxied = true
+  
+  # Registry must NOT be proxied - Docker registry doesn't work through Cloudflare proxy
+  # Cloudflare intercepts HTTPS and breaks Docker's authentication flow
+  non_proxied_subdomains = ["registry"]
 }

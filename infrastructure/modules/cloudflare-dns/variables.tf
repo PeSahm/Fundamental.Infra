@@ -40,6 +40,12 @@ variable "proxied" {
   default     = true
 }
 
+variable "non_proxied_subdomains" {
+  description = "List of subdomains that should NOT be proxied (e.g., registry for Docker)"
+  type        = list(string)
+  default     = []
+}
+
 variable "ttl" {
   description = "TTL for DNS records (only used when proxied = false)"
   type        = number

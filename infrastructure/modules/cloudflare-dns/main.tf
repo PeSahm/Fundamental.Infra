@@ -39,13 +39,13 @@ locals {
         ttl     = var.proxied ? 1 : var.ttl # Auto TTL when proxied
       }
     },
-    # Subdomain records
+    # Subdomain records (proxied)
     {
       for subdomain in var.subdomains : subdomain => {
         name    = subdomain
         content = var.vps_ip
-        proxied = var.proxied
-        ttl     = var.proxied ? 1 : var.ttl
+        proxied = contains(var.non_proxied_subdomains, subdomain) ? false : var.proxied
+        ttl     = contains(var.non_proxied_subdomains, subdomain) ? var.ttl : (var.proxied ? 1 : var.ttl)
       }
     }
   )
