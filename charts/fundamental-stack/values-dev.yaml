@@ -70,7 +70,7 @@ frontend:
   
   image:
     repository: registry.academind.ir/fundamental-frontend
-    tag: "dev-latest"
+    tag: "prod-latest"
   
   resources:
     limits:
