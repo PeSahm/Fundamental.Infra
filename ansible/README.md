@@ -1,6 +1,29 @@
 # Ansible Configuration
 
-This directory contains Ansible playbooks and roles for provisioning and configuring the VPS infrastructure.
+This directory contains Ansible playbooks for zero-touch deployment of the Fundamental platform.
+
+## Quick Start - Full Deployment
+
+```bash
+# 1. Install Ansible and collections
+pip install ansible
+ansible-galaxy collection install -r requirements.yml
+
+# 2. Ensure SSH key is set up for VPS access
+ssh-add ~/.ssh/your_key
+
+# 3. Run full deployment (from scratch)
+cd ansible
+ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
+```
+
+This will:
+1. Setup VPS (Docker, MicroK8s, UFW)
+2. Configure container registry
+3. Setup cert-manager with Let's Encrypt
+4. Create Kubernetes secrets
+5. Install ArgoCD
+6. Deploy applications via GitOps
 
 ## Directory Structure
 
@@ -13,10 +36,17 @@ ansible/
 │   └── host_vars/      # Variables per host
 │       └── vps-prod.yml # Production VPS variables
 ├── playbooks/          # Ansible playbooks
-│   └── setup-vps.yaml  # Main VPS provisioning playbook
+│   ├── full-deploy.yaml          # Complete deployment (runs all steps)
+│   ├── setup-vps.yaml            # VPS infrastructure setup
+│   ├── setup-registry-proxy.yaml # Container registry configuration
+│   ├── setup-cert-manager.yaml   # TLS certificates (Let's Encrypt)
+│   ├── setup-kubernetes-secrets.yaml # K8s secrets for apps
+│   ├── setup-argocd.yaml         # ArgoCD installation
+│   └── deploy-applications.yaml  # Application deployment
 ├── roles/              # Custom roles (future use)
 ├── files/              # Static files
 ├── templates/          # Jinja2 templates
+├── .credentials/       # Generated credentials (gitignored)
 ├── ansible.cfg         # Ansible configuration
 └── requirements.yml    # External collection dependencies
 ```
