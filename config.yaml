@@ -3,6 +3,10 @@
 # =============================================================================
 # This is the SINGLE SOURCE OF TRUTH for all infrastructure configuration.
 # 
+# Branch Strategy:
+#   - develop branch → Development environment (dev.academind.ir)
+#   - main branch    → Production environment (sahmbaz.ir)
+#
 # To change any value:
 #   1. Edit this file
 #   2. Run: ./scripts/generate-config.sh
@@ -15,158 +19,205 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Domain Configuration
+# Environment Configuration
 # -----------------------------------------------------------------------------
-domain:
-  # Base domain (without subdomain)
-  base: "academind.ir"
-  
-  # Subdomains for different services
-  subdomains:
-    # Production
-    prod:
-      frontend: ""           # Root domain (academind.ir)
-      api: "api"             # api.academind.ir
-      argocd: "argocd"       # argocd.academind.ir
-      registry: "registry"   # registry.academind.ir
+environments:
+  # =========================================================================
+  # DEVELOPMENT ENVIRONMENT
+  # =========================================================================
+  # Branch: develop
+  # Domain: dev.academind.ir
+  # =========================================================================
+  dev:
+    # Domain settings
+    domain:
+      base: "academind.ir"
+      subdomain: "dev"              # dev.academind.ir
+      full: "dev.academind.ir"
     
-    # Development
-    dev:
-      frontend: "dev"        # dev.academind.ir
-      api: "dev"             # dev.academind.ir/api (same as frontend, path-based)
-      argocd: "argocd"       # argocd.academind.ir (shared)
-      registry: "registry"   # registry.academind.ir (shared)
+    # Git branch that triggers this environment
+    branch: "develop"
+    
+    # Kubernetes namespace
+    namespace: "fundamental-dev"
+    
+    # ASP.NET Core environment
+    aspnet_environment: "Development"
+    
+    # Image tag pattern
+    image_tag: "dev-latest"
+    
+    # Database
+    database_name: "fundamental_dev"
+    
+    # Resource limits (lower for dev)
+    resources:
+      backend:
+        cpu_limit: "500m"
+        memory_limit: "512Mi"
+        cpu_request: "100m"
+        memory_request: "256Mi"
+      frontend:
+        cpu_limit: "100m"
+        memory_limit: "128Mi"
+        cpu_request: "50m"
+        memory_request: "64Mi"
+      postgres:
+        cpu_limit: "300m"
+        memory_limit: "256Mi"
+        cpu_request: "50m"
+        memory_request: "128Mi"
+        storage: "5Gi"
+      redis:
+        cpu_limit: "100m"
+        memory_limit: "128Mi"
+        cpu_request: "25m"
+        memory_request: "64Mi"
+        storage: "1Gi"
+    
+    # Scaling
+    replicas:
+      backend: 1
+      frontend: 1
+    autoscaling:
+      enabled: false
+
+  # =========================================================================
+  # PRODUCTION ENVIRONMENT
+  # =========================================================================
+  # Branch: main
+  # Domain: sahmbaz.ir
+  # =========================================================================
+  prod:
+    # Domain settings
+    domain:
+      base: "sahmbaz.ir"
+      subdomain: ""                 # Root domain (sahmbaz.ir)
+      full: "sahmbaz.ir"
+    
+    # Git branch that triggers this environment
+    branch: "main"
+    
+    # Kubernetes namespace
+    namespace: "fundamental-prod"
+    
+    # ASP.NET Core environment
+    aspnet_environment: "Production"
+    
+    # Image tag pattern
+    image_tag: "prod-latest"
+    
+    # Database
+    database_name: "fundamental_prod"
+    
+    # Resource limits (higher for prod)
+    resources:
+      backend:
+        cpu_limit: "1000m"
+        memory_limit: "1Gi"
+        cpu_request: "200m"
+        memory_request: "512Mi"
+      frontend:
+        cpu_limit: "200m"
+        memory_limit: "256Mi"
+        cpu_request: "100m"
+        memory_request: "128Mi"
+      postgres:
+        cpu_limit: "500m"
+        memory_limit: "512Mi"
+        cpu_request: "100m"
+        memory_request: "256Mi"
+        storage: "20Gi"
+      redis:
+        cpu_limit: "200m"
+        memory_limit: "256Mi"
+        cpu_request: "50m"
+        memory_request: "128Mi"
+        storage: "5Gi"
+    
+    # Scaling
+    replicas:
+      backend: 2
+      frontend: 2
+    autoscaling:
+      enabled: true
+      min_replicas: 2
+      max_replicas: 5
+      target_cpu: 70
 
 # -----------------------------------------------------------------------------
-# VPS Server Configuration
+# Shared Infrastructure Configuration
 # -----------------------------------------------------------------------------
-vps:
-  ip: "5.10.248.55"
-  ssh_user: "root"
-  deploy_user: "deploy"
-
-# -----------------------------------------------------------------------------
-# GitHub Configuration
-# -----------------------------------------------------------------------------
-github:
-  owner: "PeSahm"
-  repositories:
-    backend: "Fundamental.Backend"
-    frontend: "Fundamental.FrontEnd"
-    infra: "Fundamental.Infra"
-
-# -----------------------------------------------------------------------------
-# Container Registry Configuration
-# -----------------------------------------------------------------------------
-registry:
-  # Username for authentication
-  username: "fundamental"
-  # Image names
-  images:
-    backend: "fundamental-backend"
-    frontend: "fundamental-frontend"
-    migrations: "fundamental-migrations"
-
-# -----------------------------------------------------------------------------
-# Kubernetes Configuration
-# -----------------------------------------------------------------------------
-kubernetes:
-  # Namespace names
-  namespaces:
-    dev: "fundamental-dev"
-    prod: "fundamental-prod"
+shared:
+  # VPS Server
+  vps:
+    ip: "5.10.248.55"
+    ssh_user: "root"
+    deploy_user: "deploy"
   
-  # Ingress class (MicroK8s uses 'public')
-  ingress_class: "public"
+  # ArgoCD (shared between environments)
+  argocd:
+    domain: "argocd.academind.ir"
+    namespace: "argocd"
   
-  # Cert-manager ClusterIssuer
-  cluster_issuer: "letsencrypt-prod"
-
-# -----------------------------------------------------------------------------
-# Database Configuration
-# -----------------------------------------------------------------------------
-database:
-  # PostgreSQL
-  postgres:
-    image: "postgres:17-alpine"
-    database_name:
-      dev: "fundamental_dev"
-      prod: "fundamental_prod"
+  # Container Registry (shared between environments)
+  registry:
+    domain: "registry.academind.ir"
     username: "fundamental"
+    namespace: "container-registry"
+    images:
+      backend: "fundamental-backend"
+      frontend: "fundamental-frontend"
+      migrations: "fundamental-migrations"
   
-  # Redis
-  redis:
-    image: "redis:7-alpine"
-
-# -----------------------------------------------------------------------------
-# Application Configuration
-# -----------------------------------------------------------------------------
-application:
-  # .NET Environment
-  aspnet_environment:
-    dev: "Development"
-    prod: "Production"
+  # GitHub
+  github:
+    owner: "PeSahm"
+    repositories:
+      backend: "Fundamental.Backend"
+      frontend: "Fundamental.FrontEnd"
+      infra: "Fundamental.Infra"
   
-  # Image tags
-  default_tag:
-    dev: "prod-latest"
-    prod: "prod-latest"
+  # Kubernetes
+  kubernetes:
+    ingress_class: "public"
+    cluster_issuer: "letsencrypt-prod"
+  
+  # Database images
+  database:
+    postgres_image: "postgres:17-alpine"
+    postgres_username: "fundamental"
+    redis_image: "redis:7-alpine"
 
 # -----------------------------------------------------------------------------
 # Cloudflare Configuration
 # -----------------------------------------------------------------------------
 cloudflare:
-  # Zone ID (set via environment variable CLOUDFLARE_ZONE_ID)
-  # API Token (set via environment variable CLOUDFLARE_API_TOKEN)
+  # Zone IDs (set via environment variables or here)
+  zones:
+    academind_ir: "${CLOUDFLARE_ZONE_ID_ACADEMIND:-5b3e77a064d4ab87f8289d5e024fa1ed}"
+    sahmbaz_ir: "${CLOUDFLARE_ZONE_ID_SAHMBAZ}"
   
   # Proxy settings
-  proxied_subdomains: ["", "www", "api", "dev", "argocd"]
+  proxied_subdomains: ["", "www", "dev", "argocd"]
   non_proxied_subdomains: ["registry"]  # Docker registry doesn't work with proxy
 
 # -----------------------------------------------------------------------------
-# Resource Limits
+# DNS Records Configuration
 # -----------------------------------------------------------------------------
-resources:
-  dev:
-    backend:
-      cpu_limit: "500m"
-      memory_limit: "512Mi"
-      cpu_request: "100m"
-      memory_request: "256Mi"
-    frontend:
-      cpu_limit: "100m"
-      memory_limit: "128Mi"
-      cpu_request: "50m"
-      memory_request: "64Mi"
-    postgres:
-      cpu_limit: "300m"
-      memory_limit: "256Mi"
-      cpu_request: "50m"
-      memory_request: "128Mi"
-    redis:
-      cpu_limit: "100m"
-      memory_limit: "128Mi"
-      cpu_request: "25m"
-      memory_request: "64Mi"
+dns:
+  # Records for academind.ir zone
+  academind_ir:
+    - name: "dev"           # dev.academind.ir
+      proxied: true
+    - name: "argocd"        # argocd.academind.ir
+      proxied: true
+    - name: "registry"      # registry.academind.ir
+      proxied: false        # Registry must not be proxied
   
-  prod:
-    backend:
-      cpu_limit: "1000m"
-      memory_limit: "1Gi"
-      cpu_request: "200m"
-      memory_request: "512Mi"
-    frontend:
-      cpu_limit: "200m"
-      memory_limit: "256Mi"
-      cpu_request: "100m"
-      memory_request: "128Mi"
-    postgres:
-      cpu_limit: "500m"
-      memory_limit: "512Mi"
-      cpu_request: "100m"
-      memory_request: "256Mi"
-    redis:
-      cpu_limit: "200m"
-      memory_limit: "256Mi"
-      cpu_request: "50m"
-      memory_request: "128Mi"
+  # Records for sahmbaz.ir zone
+  sahmbaz_ir:
+    - name: "@"             # sahmbaz.ir (root)
+      proxied: true
+    - name: "www"           # www.sahmbaz.ir
+      proxied: true
