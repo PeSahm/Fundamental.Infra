@@ -16,7 +16,8 @@ metadata:
     {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
 data:
   # Database connection (password injected via env var)
-  ConnectionStrings__DefaultConnection: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
+  # App uses GetConnectionString("FundamentalDbContext")
+  ConnectionStrings__FundamentalDbContext: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
   
   # Redis connection
   {{- if .Values.redis.enabled }}

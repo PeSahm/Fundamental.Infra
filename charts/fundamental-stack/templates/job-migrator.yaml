@@ -137,8 +137,8 @@ spec:
                   name: {{ include "fundamental-stack.postgresql.secretName" . }}
                   key: {{ include "fundamental-stack.postgresql.passwordKey" . }}
             
-            # Connection string for EF Core
-            - name: ConnectionStrings__DefaultConnection
+            # Connection string for EF Core - using FundamentalDbContext as the app expects
+            - name: ConnectionStrings__FundamentalDbContext
               value: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
             
             {{- with .Values.migrator.env }}
