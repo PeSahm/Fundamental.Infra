@@ -122,12 +122,13 @@ ingress:
   hosts:
     - host: dev.academind.ir
       paths:
-        - path: /
-          pathType: Prefix
-          service: frontend
+        # Backend path must come first for nginx to prioritize it
         - path: /api
           pathType: Prefix
           service: backend
+        - path: /
+          pathType: Prefix
+          service: frontend
   
   tls:
     - secretName: dev-academind-tls
