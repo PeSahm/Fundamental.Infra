@@ -26,7 +26,7 @@ backend:
   
   image:
     repository: registry.academind.ir/fundamental-backend
-    tag: "dev-latest"
+    tag: "prod-latest"
   
   # Development environment
   aspnetEnvironment: "Development"
@@ -70,7 +70,7 @@ frontend:
   
   image:
     repository: registry.academind.ir/fundamental-frontend
-    tag: "dev-latest"
+    tag: "prod-latest"
   
   resources:
     limits:
@@ -98,7 +98,7 @@ migrator:
   # Dedicated migrations image
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "dev-latest"
+    tag: "prod-latest"
   
   resources:
     limits:
