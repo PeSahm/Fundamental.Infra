@@ -103,9 +103,9 @@ migrator:
       memory: 256Mi
 
 # =============================================================================
-# Ingress - Backend (Production)
+# Ingress (Production) - sahmbaz.ir
 # =============================================================================
-backendIngress:
+ingress:
   enabled: true
   className: "public"
   
@@ -114,28 +114,6 @@ backendIngress:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-  
-  hosts:
-    - host: sahmbaz.ir
-      paths:
-        - path: /api
-          pathType: Prefix
-  
-  tls:
-    - secretName: sahmbaz-ir-tls
-      hosts:
-        - sahmbaz.ir
-
-# =============================================================================
-# Ingress - Frontend (Production)
-# =============================================================================
-frontendIngress:
-  enabled: true
-  className: "public"
-  
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
@@ -145,6 +123,10 @@ frontendIngress:
       paths:
         - path: /
           pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
   
   tls:
     - secretName: sahmbaz-ir-tls
