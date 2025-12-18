@@ -113,10 +113,10 @@ migrator:
 # =============================================================================
 ingress:
   enabled: true
-  className: "nginx"
+  className: "public"
   
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   
   hosts:
@@ -141,7 +141,7 @@ registryIngress:
   enabled: true
   
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/auth-type: "basic"
