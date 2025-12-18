@@ -15,21 +15,8 @@ metadata:
   labels:
     {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
 data:
-  # Database connection (password injected via env var)
-  # App uses GetConnectionString("FundamentalDbContext")
-  ConnectionStrings__FundamentalDbContext: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
-  
-  # Redis configuration - uses Redis section, not ConnectionStrings
-  {{- if .Values.redis.enabled }}
-  Redis__ConnectionString: "{{ include "fundamental-stack.redis.host" . }}:{{ include "fundamental-stack.redis.port" . }}"
-  Redis__Password: "$(REDIS_PASSWORD)"
-  Redis__DefaultDatabase: "0"
-  Redis__ConnectTimeout: "5000"
-  Redis__ConnectRetry: "3"
-  Redis__KeepAlive: "60"
-  Redis__AbortOnConnectFail: "false"
-  Redis__ConfigCheckSeconds: "60"
-  {{- end }}
+  # Note: Connection strings moved to deployment env: section
+  # because $(VAR) substitution doesn't work in ConfigMap envFrom
   
   # Application settings
   {{- if .Values.backend.config }}

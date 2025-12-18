@@ -130,6 +130,30 @@ spec:
                   key: {{ .Values.redis.auth.existingSecretPasswordKey | default "redis-password" }}
             {{- end }}
             
+            # Connection strings - must be in env: section for $(VAR) substitution to work
+            # ConfigMap envFrom doesn't support variable substitution
+            - name: ConnectionStrings__FundamentalDbContext
+              value: "Host={{ include "fundamental-stack.postgresql.host" . }};Port={{ include "fundamental-stack.postgresql.port" . }};Database={{ include "fundamental-stack.postgresql.database" . }};Username=$(DB_USERNAME);Password=$(DB_PASSWORD)"
+            
+            {{- if .Values.redis.enabled }}
+            - name: Redis__ConnectionString
+              value: "{{ include "fundamental-stack.redis.host" . }}:{{ include "fundamental-stack.redis.port" . }}"
+            - name: Redis__Password
+              value: "$(REDIS_PASSWORD)"
+            - name: Redis__DefaultDatabase
+              value: "0"
+            - name: Redis__ConnectTimeout
+              value: "5000"
+            - name: Redis__ConnectRetry
+              value: "3"
+            - name: Redis__KeepAlive
+              value: "60"
+            - name: Redis__AbortOnConnectFail
+              value: "false"
+            - name: Redis__ConfigCheckSeconds
+              value: "60"
+            {{- end }}
+            
             # Additional environment variables
             {{- with .Values.backend.env }}
             {{- toYaml . | nindent 12 }}
