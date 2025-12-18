@@ -5,11 +5,12 @@ Complete infrastructure-as-code for deploying the Fundamental platform (Backend 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Environments](#environments)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Branch Strategy](#branch-strategy)
 - [Directory Structure](#directory-structure)
-- [Tools & Technologies](#tools--technologies)
 - [Deployment Workflow](#deployment-workflow)
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Access & Credentials](#access--credentials)
@@ -20,12 +21,22 @@ Complete infrastructure-as-code for deploying the Fundamental platform (Backend 
 
 ## Overview
 
-This repository manages the complete infrastructure for the Fundamental platform using a **GitOps** approach:
+This repository manages the complete infrastructure for the Fundamental platform using a **GitOps** approach with **multi-environment** support:
 
 - **Single Source of Truth**: All configuration in `config.yaml`
-- **Infrastructure as Code**: Terragrunt for DNS/GitHub, Ansible for VPS setup
+- **Multi-Environment**: Separate dev (develop branch) and prod (main branch) environments
+- **Infrastructure as Code**: Ansible for VPS setup
 - **GitOps Deployment**: ArgoCD automatically syncs Kubernetes manifests
 - **Automated CI/CD**: GitHub Actions build, test, and deploy on push
+
+---
+
+## Environments
+
+| Environment | Branch | Domain | Namespace | Purpose |
+|-------------|--------|--------|-----------|---------|
+| **Development** | `develop` | `dev.academind.ir` | `fundamental-dev` | Testing, integration |
+| **Production** | `main` | `sahmbaz.ir` | `fundamental-prod` | Live users |
 
 ### What Gets Deployed
 
@@ -35,7 +46,7 @@ This repository manages the complete infrastructure for the Fundamental platform
 | **Frontend** | Angular SPA | Nginx |
 | **Database** | PostgreSQL 17 | StatefulSet |
 | **Cache** | Redis 7 | StatefulSet |
-| **Registry** | Container images | MicroK8s built-in |
+| **Registry** | Container images | MicroK8s built-in (shared) |
 | **Ingress** | HTTPS routing | Nginx Ingress |
 | **Certificates** | Auto SSL | Let's Encrypt + cert-manager |
 
@@ -48,14 +59,18 @@ This repository manages the complete infrastructure for the Fundamental platform
 │                              INTERNET                                        │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           CLOUDFLARE DNS                                     │
-│  dev.academind.ir  ──────────────────────────────────────┐                  │
-│  argocd.academind.ir ────────────────────────────────────┤                  │
-│  registry.academind.ir ──────────────────────────────────┘                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+┌──────────────────────────────┐   ┌──────────────────────────────┐
+│      CLOUDFLARE DNS          │   │      CLOUDFLARE DNS          │
+│    (academind.ir zone)       │   │     (sahmbaz.ir zone)        │
+│                              │   │                              │
+│  dev.academind.ir    ───┐    │   │  sahmbaz.ir          ───┐    │
+│  argocd.academind.ir ───┤    │   │  www.sahmbaz.ir      ───┤    │
+│  registry.academind.ir ─┘    │   │                      ───┘    │
+└──────────────────────────────┘   └──────────────────────────────┘
+                    │                               │
+                    └───────────────┬───────────────┘
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         VPS (5.10.248.55)                                    │
@@ -64,47 +79,95 @@ This repository manages the complete infrastructure for the Fundamental platform
 │  │                                                                        │  │
 │  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
 │  │  │                    Nginx Ingress Controller                      │  │  │
-│  │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │  │  │
-│  │  │  │ /api/* → BE  │  │ /* → FE     │  │ registry.* → registry│   │  │  │
-│  │  │  └──────────────┘  └──────────────┘  └──────────────────────┘   │  │  │
+│  │  │  Routes traffic based on hostname to appropriate namespace       │  │  │
 │  │  └─────────────────────────────────────────────────────────────────┘  │  │
 │  │                                                                        │  │
-│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
-│  │  │                   fundamental-dev namespace                      │  │  │
-│  │  │                                                                  │  │  │
-│  │  │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │  │  │
-│  │  │   │ Backend  │  │ Frontend │  │ Postgres │  │    Redis     │   │  │  │
-│  │  │   │ (API)    │  │ (Nginx)  │  │   (DB)   │  │   (Cache)    │   │  │  │
-│  │  │   └──────────┘  └──────────┘  └──────────┘  └──────────────┘   │  │  │
-│  │  └─────────────────────────────────────────────────────────────────┘  │  │
+│  │  ┌─────────────────────────────┐  ┌────────────────────────────────┐  │  │
+│  │  │   fundamental-dev namespace │  │  fundamental-prod namespace    │  │  │
+│  │  │   (dev.academind.ir)        │  │  (sahmbaz.ir)                  │  │  │
+│  │  │                             │  │                                │  │  │
+│  │  │  ┌─────────┐ ┌─────────┐   │  │  ┌─────────┐ ┌─────────┐      │  │  │
+│  │  │  │ Backend │ │Frontend │   │  │  │ Backend │ │Frontend │      │  │  │
+│  │  │  │ (API)   │ │(Nginx)  │   │  │  │ (API)   │ │(Nginx)  │      │  │  │
+│  │  │  └─────────┘ └─────────┘   │  │  └─────────┘ └─────────┘      │  │  │
+│  │  │  ┌─────────┐ ┌─────────┐   │  │  ┌─────────┐ ┌─────────┐      │  │  │
+│  │  │  │Postgres │ │ Redis   │   │  │  │Postgres │ │ Redis   │      │  │  │
+│  │  │  │  (DB)   │ │(Cache)  │   │  │  │  (DB)   │ │(Cache)  │      │  │  │
+│  │  │  └─────────┘ └─────────┘   │  │  └─────────┘ └─────────┘      │  │  │
+│  │  └─────────────────────────────┘  └────────────────────────────────┘  │  │
 │  │                                                                        │  │
-│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
-│  │  │                      argocd namespace                            │  │  │
-│  │  │   ArgoCD (GitOps Controller)                                     │  │  │
-│  │  └─────────────────────────────────────────────────────────────────┘  │  │
-│  │                                                                        │  │
-│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
-│  │  │                 container-registry namespace                     │  │  │
-│  │  │   Docker Registry (images storage)                               │  │  │
-│  │  └─────────────────────────────────────────────────────────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────────────────────┐  │  │
+│  │  │                   Shared Services                                 │  │  │
+│  │  │  ┌─────────────────┐  ┌────────────────────────────────────────┐ │  │  │
+│  │  │  │ ArgoCD          │  │ Container Registry                     │ │  │  │
+│  │  │  │ (GitOps)        │  │ (registry.academind.ir)                │ │  │  │
+│  │  │  │ argocd namespace│  │ container-registry namespace           │ │  │  │
+│  │  │  └─────────────────┘  └────────────────────────────────────────┘ │  │  │
+│  │  └──────────────────────────────────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### CI/CD Flow
+---
+
+## Branch Strategy
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Git Push   │────▶│ GitHub       │────▶│ Build &      │────▶│ Push to      │
-│   (main)     │     │ Actions      │     │ Test         │     │ Registry     │
-└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
-                                                                       │
-                                                                       ▼
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   App Live   │◀────│ K8s Deploys  │◀────│ ArgoCD       │◀────│ GitOps       │
-│   Updated    │     │ New Image    │     │ Syncs        │     │ Trigger      │
-└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         BRANCH DEPLOYMENT FLOW                                │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Fundamental.Backend / Fundamental.FrontEnd                                 │
+│                                                                              │
+│   develop branch ─────────────────────────┐                                  │
+│        │                                  │                                  │
+│        ▼                                  │                                  │
+│   ┌──────────────┐    Build & Push        │                                  │
+│   │ GitHub       │───▶ dev-latest tag ────┤                                  │
+│   │ Actions      │                        │                                  │
+│   └──────────────┘                        ▼                                  │
+│                                    ┌──────────────┐                          │
+│                                    │ Fundamental. │                          │
+│                                    │ Infra        │                          │
+│                                    │ (develop)    │                          │
+│                                    └──────┬───────┘                          │
+│                                           │                                  │
+│                                           ▼                                  │
+│                                    ┌──────────────┐                          │
+│                                    │ ArgoCD       │                          │
+│                                    │ fundamental- │                          │
+│                                    │ dev app      │──▶ dev.academind.ir      │
+│                                    └──────────────┘                          │
+│                                                                              │
+│   main branch ────────────────────────────┐                                  │
+│        │                                  │                                  │
+│        ▼                                  │                                  │
+│   ┌──────────────┐    Build & Push        │                                  │
+│   │ GitHub       │───▶ prod-latest tag ───┤                                  │
+│   │ Actions      │                        │                                  │
+│   └──────────────┘                        ▼                                  │
+│                                    ┌──────────────┐                          │
+│                                    │ Fundamental. │                          │
+│                                    │ Infra        │                          │
+│                                    │ (main)       │                          │
+│                                    └──────┬───────┘                          │
+│                                           │                                  │
+│                                           ▼                                  │
+│                                    ┌──────────────┐                          │
+│                                    │ ArgoCD       │                          │
+│                                    │ fundamental- │                          │
+│                                    │ prod app     │──▶ sahmbaz.ir            │
+│                                    └──────────────┘                          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Image Tagging
+
+| Branch | Image Tag | Example |
+|--------|-----------|---------|
+| `develop` | `dev-latest`, `dev-YYYYMMDD-SHA` | `dev-latest`, `dev-20250128-abc1234` |
+| `main` | `prod-latest`, `1.0.0-YYYYMMDD-SHA` | `prod-latest`, `1.0.0-20250128-xyz9876` |
 
 ---
 
@@ -112,108 +175,97 @@ This repository manages the complete infrastructure for the Fundamental platform
 
 ### Prerequisites
 
-1. **Local Machine**:
-   - `yq` - YAML processor
-   - `ansible` - Configuration management
-   - `terraform` & `terragrunt` - Infrastructure as code
-   - `gh` - GitHub CLI (authenticated)
-   - SSH access to VPS
+- SSH access to VPS (5.10.248.55)
+- GitHub repository access
+- Cloudflare API token (for DNS management)
 
-2. **Install yq**:
+### Initial Setup
+
+1. **Clone the repository:**
    ```bash
-   sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-   sudo chmod +x /usr/local/bin/yq
+   git clone https://github.com/PeSahm/Fundamental.Infra.git
+   cd Fundamental.Infra
    ```
 
-3. **Environment Variables**:
+2. **Review/Update configuration:**
    ```bash
-   export CLOUDFLARE_API_TOKEN="your-cloudflare-token"
-   export CLOUDFLARE_ZONE_ID="your-zone-id"
+   # Edit the single source of truth
+   vim config.yaml
+   
+   # Generate all configuration files
+   ./scripts/generate-config.sh
    ```
 
-### First-Time Setup
+3. **Run initial VPS setup (first time only):**
+   ```bash
+   cd ansible
+   ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
+   ```
+
+4. **Apply ArgoCD applications:**
+   ```bash
+   # SSH to VPS
+   ssh root@5.10.248.55
+   
+   # Apply ArgoCD apps for both environments
+   microk8s kubectl apply -f /root/argocd-apps/
+   ```
+
+### Creating the Develop Branch
+
+Both Fundamental.Backend and Fundamental.FrontEnd repositories need the `develop` branch:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/PeSahm/Fundamental.Infra.git
-cd Fundamental.Infra
-
-# 2. Review and customize config.yaml
-vim config.yaml
-
-# 3. Generate all configuration files
-./scripts/generate-config.sh
-
-# 4. Setup DNS records (Cloudflare)
-cd infrastructure/live/development/dns
-terragrunt apply
-
-# 5. Deploy to VPS (full stack)
-cd ../../../../ansible
-ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
+# For each repo (Backend, Frontend, Infra)
+git checkout main
+git checkout -b develop
+git push -u origin develop
 ```
 
 ---
 
 ## Configuration
 
-### Single Source of Truth: `config.yaml`
+### Single Source of Truth
 
-All infrastructure configuration is centralized in one file. Edit this file and regenerate configs.
-
-```yaml
-# config.yaml - Key sections
-
-domain:
-  base: "academind.ir"              # Your domain
-  subdomains:
-    dev:
-      frontend: "dev"               # dev.academind.ir
-    prod:
-      frontend: ""                  # academind.ir (root)
-
-vps:
-  ip: "5.10.248.55"                 # Your VPS IP
-
-github:
-  owner: "PeSahm"                   # GitHub username/org
-
-registry:
-  username: "fundamental"           # Registry auth username
-  images:
-    backend: "fundamental-backend"
-    frontend: "fundamental-frontend"
-```
-
-### Changing Configuration
+All configuration is managed in `config.yaml`. After editing, regenerate derived files:
 
 ```bash
-# 1. Edit config.yaml
-vim config.yaml
-
-# 2. Regenerate all config files
 ./scripts/generate-config.sh
-
-# 3. Commit and push
-git add -A && git commit -m "Update configuration" && git push
-
-# 4. Apply changes
-# For DNS changes:
-cd infrastructure/live/development/dns && terragrunt apply
-
-# For Kubernetes changes (automatic via ArgoCD, or manual):
-ssh root@YOUR_VPS "microk8s kubectl -n argocd exec deploy/argocd-server -- \
-  argocd app sync fundamental-dev --prune --server localhost:8080 --insecure --core"
 ```
 
-### Generated Files
+This generates:
+- `ansible/group_vars/all.yaml` - Ansible variables
+- `charts/fundamental-stack/values-dev.yaml` - Development Helm values
+- `charts/fundamental-stack/values-prod.yaml` - Production Helm values
+- `argocd/applications/fundamental-dev.yaml` - ArgoCD dev application
+- `argocd/applications/fundamental-prod.yaml` - ArgoCD prod application
+- `docs/CICD_CONFIGURATION.md` - CI/CD reference
 
-| File | Purpose | Generated From |
-|------|---------|----------------|
-| `infrastructure/live/terragrunt.hcl` | Root Terragrunt config | `config.yaml` |
-| `ansible/group_vars/all.yaml` | Ansible variables | `config.yaml` |
-| `charts/fundamental-stack/values-dev.yaml` | Dev Helm values | `config.yaml` |
-| `charts/fundamental-stack/values-prod.yaml` | Prod Helm values | `config.yaml` |
+### Environment-Specific Configuration
+
+The `config.yaml` defines both environments:
+
+```yaml
+environments:
+  dev:
+    domain:
+      full: "dev.academind.ir"
+    branch: "develop"
+    namespace: "fundamental-dev"
+    image_tag: "dev-latest"
+    resources:
+      # Lower resources for dev
+      
+  prod:
+    domain:
+      full: "sahmbaz.ir"
+    branch: "main"
+    namespace: "fundamental-prod"
+    image_tag: "prod-latest"
+    resources:
+      # Higher resources for prod
+```
 
 ---
 
@@ -224,148 +276,94 @@ Fundamental.Infra/
 ├── config.yaml                    # ⭐ SINGLE SOURCE OF TRUTH
 ├── scripts/
 │   └── generate-config.sh         # Configuration generator
-│
-├── ansible/                       # VPS Setup & Configuration
-│   ├── inventory/
-│   │   └── hosts.ini              # VPS host definition
-│   ├── group_vars/
-│   │   └── all.yaml               # Generated variables
-│   └── playbooks/
-│       ├── full-deploy.yaml       # Complete deployment
-│       ├── setup-vps.yaml         # Initial VPS setup
-│       ├── setup-argocd.yaml      # ArgoCD installation
-│       ├── setup-cert-manager.yaml # SSL certificates
-│       ├── setup-registry-proxy.yaml # Container registry
-│       ├── setup-kubernetes-secrets.yaml # K8s secrets
-│       ├── setup-github-secrets.yaml # GitHub Actions secrets
-│       └── deploy-applications.yaml # ArgoCD apps
-│
-├── charts/                        # Helm Charts
+├── ansible/
+│   ├── inventory/hosts.ini        # VPS inventory
+│   ├── group_vars/all.yaml        # Generated variables
+│   └── playbooks/                 # Setup playbooks
+├── charts/
 │   └── fundamental-stack/
 │       ├── Chart.yaml
-│       ├── values.yaml            # Default values
 │       ├── values-dev.yaml        # Generated dev values
-│       ├── values-prod.yaml       # Generated prod values
-│       └── templates/
-│           ├── backend/           # Backend deployment
-│           ├── frontend/          # Frontend deployment
-│           ├── postgresql/        # Database
-│           ├── redis/             # Cache
-│           ├── ingress-backend.yaml
-│           ├── ingress-frontend.yaml
-│           └── ingress-registry.yaml
-│
-├── infrastructure/                # Terragrunt/Terraform
-│   ├── live/
-│   │   ├── terragrunt.hcl         # Generated root config
-│   │   ├── development/
-│   │   │   ├── dns/               # Dev DNS records
-│   │   │   └── github/            # GitHub secrets
-│   │   └── production/
-│   │       ├── dns/               # Prod DNS records
-│   │       └── github/            # GitHub secrets
-│   └── modules/
-│       ├── cloudflare-dns/        # DNS module
-│       └── github-secrets/        # GitHub module
-│
-├── argocd/                        # ArgoCD Applications
+│       └── values-prod.yaml       # Generated prod values
+├── argocd/
 │   ├── applications/
-│   │   └── fundamental-dev.yaml   # Dev environment app
+│   │   ├── fundamental-dev.yaml   # Dev ArgoCD app
+│   │   └── fundamental-prod.yaml  # Prod ArgoCD app
 │   └── projects/
-│       └── fundamental.yaml       # ArgoCD project
-│
-└── environments/                  # Environment-specific configs
-    ├── dev/
-    └── prod/
+├── .github/workflows/
+│   └── update-tag.yml             # Auto-update image tags
+└── docs/
+    └── CICD_CONFIGURATION.md      # Generated CI/CD reference
 ```
-
----
-
-## Tools & Technologies
-
-| Tool | Purpose | Why |
-|------|---------|-----|
-| **MicroK8s** | Kubernetes | Lightweight, single-node friendly |
-| **ArgoCD** | GitOps | Auto-sync K8s from Git |
-| **Helm** | Package manager | Templated K8s manifests |
-| **Terragrunt/Terraform** | IaC | DNS, GitHub config |
-| **Ansible** | Configuration | VPS setup automation |
-| **cert-manager** | SSL | Auto Let's Encrypt certs |
-| **GitHub Actions** | CI/CD | Build, test, push images |
 
 ---
 
 ## Deployment Workflow
 
-### Automated (CI/CD)
+### Development Deployment (dev.academind.ir)
 
-1. Developer pushes to `main` branch
-2. GitHub Actions:
-   - Runs tests
-   - Builds Docker image
-   - Pushes to registry (`registry.academind.ir`)
-   - Triggers GitOps update
-3. ArgoCD detects change and syncs
-4. New pods deployed with new image
+1. Push to `develop` branch in Backend/Frontend repos
+2. GitHub Actions builds images with `dev-latest` tag
+3. Triggers `update-image-tag` event to Infra repo
+4. Infra workflow updates `values-dev.yaml` on `develop` branch
+5. ArgoCD (watching `develop` branch) syncs to `fundamental-dev` namespace
+
+### Production Deployment (sahmbaz.ir)
+
+1. Push to `main` branch in Backend/Frontend repos
+2. GitHub Actions builds images with `prod-latest` tag
+3. Triggers `update-image-tag` event to Infra repo
+4. Infra workflow updates `values-prod.yaml` on `main` branch
+5. ArgoCD (watching `main` branch) syncs to `fundamental-prod` namespace
 
 ### Manual Deployment
 
 ```bash
-# Full fresh deployment
+# Deploy to dev
 cd ansible
-ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
+ansible-playbook -i inventory/hosts.ini playbooks/deploy-app.yaml \
+  -e "target_env=dev"
 
-# Just sync ArgoCD (apply Helm changes)
-ssh root@5.10.248.55 "microk8s kubectl -n argocd exec deploy/argocd-server -- \
-  argocd app sync fundamental-dev --prune --server localhost:8080 --insecure --core"
-
-# Force image pull (same tag, new image)
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev rollout restart \
-  deploy/fundamental-dev-fundamental-stack-backend"
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev rollout restart \
-  deploy/fundamental-dev-fundamental-stack-frontend"
+# Deploy to prod
+ansible-playbook -i inventory/hosts.ini playbooks/deploy-app.yaml \
+  -e "target_env=prod"
 ```
 
 ---
 
 ## CI/CD Pipeline
 
-### Backend Pipeline (`.github/workflows/ci-cd.yaml`)
+### Backend Pipeline (Fundamental.Backend)
 
-```
-Push to main
-    │
-    ▼
-┌─────────────┐
-│ Build & Test│  dotnet build, dotnet test
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Build Image │  docker build -f Dockerfile
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Push Image  │  registry.academind.ir/fundamental-backend:prod-latest
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ GitOps      │  Trigger Infra repo workflow
-└─────────────┘
+```yaml
+on:
+  push:
+    branches: [main, develop]
+
+# Branch → Environment mapping:
+# - main → prod (prod-latest tag)
+# - develop → dev (dev-latest tag)
 ```
 
-### Frontend Pipeline
+### Frontend Pipeline (Fundamental.FrontEnd)
 
-Same flow, pushes to `registry.academind.ir/fundamental-frontend:prod-latest`
+```yaml
+on:
+  push:
+    branches: [main, develop]
 
-### Image Tags
+# Same branch → environment mapping as Backend
+```
 
-| Tag | Meaning |
-|-----|---------|
-| `prod-latest` | Latest from `main` branch |
-| `1.0.0-YYYYMMDD-COMMIT` | Versioned release |
+### Infra Update Pipeline
+
+When Backend/Frontend CI triggers the `update-image-tag` event:
+
+1. Validates environment (dev/prod)
+2. Determines target branch (develop/main)
+3. Updates appropriate values file
+4. Commits and pushes to correct branch
+5. ArgoCD detects and syncs
 
 ---
 
@@ -373,228 +371,193 @@ Same flow, pushes to `registry.academind.ir/fundamental-frontend:prod-latest`
 
 ### URLs
 
-| Service | URL |
-|---------|-----|
-| Dev Frontend | https://dev.academind.ir |
-| Dev API | https://dev.academind.ir/api |
-| ArgoCD | https://argocd.academind.ir |
-| Registry | https://registry.academind.ir |
+| Service | Development | Production |
+|---------|-------------|------------|
+| Frontend | https://dev.academind.ir | https://sahmbaz.ir |
+| Backend API | https://dev.academind.ir/api | https://sahmbaz.ir/api |
+| ArgoCD | https://argocd.academind.ir | (same) |
+| Registry | https://registry.academind.ir | (same) |
 
-### Credentials
-
-Stored on VPS at `/root/.fundamental-credentials/`:
+### SSH Access
 
 ```bash
-# View all credentials
-ssh root@5.10.248.55 "ls -la /root/.fundamental-credentials/"
-
-# ArgoCD password
-ssh root@5.10.248.55 "cat /root/.fundamental-credentials/argocd-password.txt"
-
-# Registry credentials
-ssh root@5.10.248.55 "cat /root/.fundamental-credentials/registry-credentials.txt"
-
-# Database password
-ssh root@5.10.248.55 "cat /root/.fundamental-credentials/postgresql-credentials.txt"
+ssh root@5.10.248.55
 ```
 
-### Quick Reference
+### ArgoCD Dashboard
 
-| Service | Username | Password Location |
-|---------|----------|-------------------|
-| ArgoCD | `admin` | `/root/.fundamental-credentials/argocd-password.txt` |
-| Registry | `fundamental` | `/root/.fundamental-credentials/registry-credentials.txt` |
-| PostgreSQL | `fundamental` | K8s secret `postgresql-credentials` |
-| Redis | - | K8s secret `redis-credentials` |
+```bash
+# Get initial admin password (from VPS)
+cat /root/.fundamental-credentials/argocd-admin-password
+
+# Or retrieve from secret
+microk8s kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d
+```
+
+### Container Registry
+
+```bash
+# Get credentials (from VPS)
+cat /root/.fundamental-credentials/registry-password
+
+# Login
+docker login registry.academind.ir
+```
+
+### Database Access (Development)
+
+PostgreSQL is exposed on NodePort for debugging:
+
+```bash
+# From local machine
+psql -h 5.10.248.55 -p 30432 -U fundamental -d fundamental_dev
+# Password: WsqVTUish0Lf8uUvzySQlskd
+```
 
 ---
 
 ## Common Tasks
 
-### Change Domain
+### Checking Deployment Status
+
+```bash
+# SSH to VPS
+ssh root@5.10.248.55
+
+# Check pods in dev
+microk8s kubectl -n fundamental-dev get pods
+
+# Check pods in prod
+microk8s kubectl -n fundamental-prod get pods
+
+# Check ArgoCD sync status
+microk8s kubectl -n argocd get applications
+```
+
+### Viewing Logs
+
+```bash
+# Dev backend logs
+microk8s kubectl -n fundamental-dev logs -l app.kubernetes.io/component=backend -f
+
+# Prod backend logs
+microk8s kubectl -n fundamental-prod logs -l app.kubernetes.io/component=backend -f
+```
+
+### Force Sync ArgoCD
+
+```bash
+# Sync dev
+microk8s kubectl -n argocd patch application fundamental-dev \
+  --type merge -p '{"operation": {"sync": {}}}'
+
+# Sync prod
+microk8s kubectl -n argocd patch application fundamental-prod \
+  --type merge -p '{"operation": {"sync": {}}}'
+```
+
+### Updating Configuration
 
 ```bash
 # 1. Edit config.yaml
 vim config.yaml
-# Change: domain.base: "newdomain.com"
 
-# 2. Regenerate configs
+# 2. Regenerate all files
 ./scripts/generate-config.sh
 
-# 3. Update DNS (Cloudflare)
-cd infrastructure/live/development/dns
-terragrunt apply
-
-# 4. Commit and push
-git add -A && git commit -m "Change domain to newdomain.com" && git push
-
-# 5. Re-run Ansible to update certs and ingress
-cd ansible
-ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
+# 3. Commit changes
+git add -A
+git commit -m "chore: Update configuration"
+git push
 ```
 
-### View Logs
+### Rolling Back
 
 ```bash
-# Backend logs
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev logs -f \
-  deploy/fundamental-dev-fundamental-stack-backend"
-
-# Frontend logs
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev logs -f \
-  deploy/fundamental-dev-fundamental-stack-frontend"
-
-# All pods
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev get pods"
-```
-
-### Restart Services
-
-```bash
-# Restart backend
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev rollout restart \
-  deploy/fundamental-dev-fundamental-stack-backend"
-
-# Restart all
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev rollout restart deploy --all"
-```
-
-### Database Access
-
-```bash
-# Connect to PostgreSQL
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev exec -it \
-  fundamental-dev-fundamental-stack-postgresql-0 -- psql -U fundamental -d fundamental_dev"
-```
-
-### Check Certificates
-
-```bash
-ssh root@5.10.248.55 "microk8s kubectl get certificates --all-namespaces"
+# Via ArgoCD UI or CLI
+microk8s kubectl -n argocd patch application fundamental-dev \
+  -p '{"spec": {"source": {"targetRevision": "COMMIT_SHA"}}}'
 ```
 
 ---
 
 ## Troubleshooting
 
-### 502 Bad Gateway
-
-**Cause**: Backend/Frontend pod not running or ingress misconfigured.
+### Pods Not Starting
 
 ```bash
-# Check pods
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev get pods"
+# Check events
+microk8s kubectl -n fundamental-dev get events --sort-by='.lastTimestamp'
 
-# Check ingress
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev get ingress"
-
-# Check backend logs
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev logs \
-  deploy/fundamental-dev-fundamental-stack-backend"
-```
-
-### Certificate Issues
-
-```bash
-# Check certificate status
-ssh root@5.10.248.55 "microk8s kubectl get certificates --all-namespaces"
-
-# Check cert-manager logs
-ssh root@5.10.248.55 "microk8s kubectl -n cert-manager logs deploy/cert-manager"
-
-# Force certificate renewal
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev delete secret dev-academind-ir-tls"
-```
-
-### ArgoCD Sync Failed
-
-```bash
-# Check ArgoCD app status
-ssh root@5.10.248.55 "microk8s kubectl -n argocd exec deploy/argocd-server -- \
-  argocd app get fundamental-dev --server localhost:8080 --insecure --core"
-
-# Force sync
-ssh root@5.10.248.55 "microk8s kubectl -n argocd exec deploy/argocd-server -- \
-  argocd app sync fundamental-dev --force --server localhost:8080 --insecure --core"
+# Describe failing pod
+microk8s kubectl -n fundamental-dev describe pod POD_NAME
 ```
 
 ### Image Pull Errors
 
 ```bash
-# Check registry secret
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev get secret registry-credentials -o yaml"
+# Check registry credentials secret
+microk8s kubectl -n fundamental-dev get secret registry-credentials -o yaml
 
-# Test registry login
-docker login registry.academind.ir -u fundamental -p <password>
+# Test registry access from node
+curl -u fundamental:PASSWORD https://registry.academind.ir/v2/_catalog
 ```
 
 ### Database Connection Issues
 
 ```bash
 # Check PostgreSQL pod
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev get pods \
-  -l app.kubernetes.io/component=postgresql"
+microk8s kubectl -n fundamental-dev exec -it postgresql-0 -- psql -U fundamental -d fundamental_dev
 
-# Check connection string in backend config
-ssh root@5.10.248.55 "microk8s kubectl -n fundamental-dev get configmap \
-  fundamental-dev-fundamental-stack-backend-config -o yaml"
+# Check connection string in backend
+microk8s kubectl -n fundamental-dev get secret fundamental-backend-secrets -o yaml
+```
+
+### SSL Certificate Issues
+
+```bash
+# Check certificates
+microk8s kubectl get certificates -A
+
+# Check cert-manager logs
+microk8s kubectl -n cert-manager logs -l app=cert-manager -f
+```
+
+### ArgoCD Sync Issues
+
+```bash
+# Check application status
+microk8s kubectl -n argocd describe application fundamental-dev
+
+# Check ArgoCD server logs
+microk8s kubectl -n argocd logs -l app.kubernetes.io/name=argocd-server -f
 ```
 
 ---
 
-## Environment Variables Reference
+## GitHub Repository Secrets
 
-### Required for Terragrunt (DNS)
+The following secrets must be configured in Backend/Frontend repos:
 
-```bash
-export CLOUDFLARE_API_TOKEN="your-token"
-export CLOUDFLARE_ZONE_ID="your-zone-id"
-```
-
-### Required for GitHub CLI
-
-```bash
-gh auth login
-```
-
-### Optional Overrides
-
-```bash
-# Override Ansible variables
-ansible-playbook playbooks/setup-kubernetes-secrets.yaml \
-  -e "postgres_password=custom_password"
-```
+| Secret | Description |
+|--------|-------------|
+| `REGISTRY_USERNAME` | Container registry username (`fundamental`) |
+| `REGISTRY_PASSWORD` | Container registry password |
+| `INFRA_REPO_TOKEN` | GitHub PAT for triggering Infra workflow |
 
 ---
 
-## Security Notes
+## Related Repositories
 
-1. **Secrets are auto-generated** - Random 24-64 character passwords
-2. **Secrets stored in**:
-   - VPS: `/root/.fundamental-credentials/`
-   - K8s: Secrets in `fundamental-dev` namespace
-   - GitHub: Repository secrets (for CI/CD)
-3. **TLS everywhere** - Let's Encrypt certificates via cert-manager
-4. **Network policies** - Pods can only communicate as needed
-5. **Registry auth** - Basic auth required for push/pull
-
----
-
-## Playbook Reference
-
-| Playbook | Purpose | When to Use |
-|----------|---------|-------------|
-| `full-deploy.yaml` | Complete deployment | First-time setup, major updates |
-| `setup-vps.yaml` | Initial VPS config | New VPS only |
-| `setup-argocd.yaml` | Install ArgoCD | ArgoCD reinstall |
-| `setup-cert-manager.yaml` | SSL setup | Certificate issues |
-| `setup-registry-proxy.yaml` | Registry config | Registry issues |
-| `setup-kubernetes-secrets.yaml` | K8s secrets | Password rotation |
-| `setup-github-secrets.yaml` | GitHub secrets | CI/CD setup |
-| `deploy-applications.yaml` | ArgoCD apps | App config changes |
+| Repository | Description | Branch Strategy |
+|------------|-------------|-----------------|
+| [Fundamental.Backend](https://github.com/PeSahm/Fundamental.Backend) | .NET 9 API | develop → dev, main → prod |
+| [Fundamental.FrontEnd](https://github.com/PeSahm/Fundamental.FrontEnd) | Angular frontend | develop → dev, main → prod |
+| [Fundamental.Infra](https://github.com/PeSahm/Fundamental.Infra) | This repo | develop → dev values, main → prod values |
 
 ---
 
 ## License
 
-MIT License - See [LICENSE](LICENSE)
+MIT License - see [LICENSE](LICENSE) for details.
