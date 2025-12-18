@@ -137,6 +137,19 @@ jobs:
           ENV="${{ steps.update.outputs.environment }}"
           VALUES_FILE="${{ steps.update.outputs.values_file }}"
           
+          # Determine target branch based on environment
+          if [ "$ENV" == "prod" ]; then
+            TARGET_BRANCH="main"
+          else
+            TARGET_BRANCH="develop"
+          fi
+          
+          echo "Target branch: $TARGET_BRANCH"
+          
+          # Fetch and checkout target branch
+          git fetch origin $TARGET_BRANCH
+          git checkout $TARGET_BRANCH
+          
           # Check if there are changes
           if git diff --quiet "$VALUES_FILE"; then
             echo "No changes detected, skipping commit"
@@ -157,9 +170,9 @@ Triggered by: ${{ github.event.sender.login }}"
           git commit -m "$COMMIT_MSG" -m "$COMMIT_BODY"
           
           # Push changes
-          git push origin main
+          git push origin $TARGET_BRANCH
           
-          echo "✅ Successfully updated $COMPONENT to $TAG in $ENV environment"
+          echo "✅ Successfully updated $COMPONENT to $TAG in $ENV environment (branch: $TARGET_BRANCH)"
       
       - name: Create Summary
         run: |
