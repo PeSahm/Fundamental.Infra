@@ -118,16 +118,17 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Required for regex path matching
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    # Rewrite /api/* to /* when forwarding to backend
-    # The regex captures: /api(/|$)(.*) → $2 is everything after /api
-    nginx.ingress.kubernetes.io/rewrite-target: "/$2"
+    # HSTS for security
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
   
   hosts:
     - host: dev.academind.ir
       paths:
-        # Backend path must come first for nginx to prioritize it
+        # Backend and Frontend paths are now in separate ingresses
+        # Backend: /api/* → backend (with rewrite)
+        # Frontend: /* → frontend (no rewrite)
         - path: /api
           pathType: Prefix
           service: backend
