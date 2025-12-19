@@ -431,6 +431,133 @@ ansible-playbook playbooks/setup-vps.yaml --tags "docker"
 ansible-playbook playbooks/setup-vps.yaml --skip-tags "microk8s"
 ```
 
+## Sentry Self-Hosted Deployment
+
+Deploy Sentry error tracking and performance monitoring for both backend and frontend applications.
+
+### Prerequisites
+
+- MicroK8s cluster running
+- cert-manager configured
+- DNS record for `sentry.academind.ir`
+
+### Deploy Sentry
+
+```bash
+# Deploy Sentry (from ansible directory)
+ansible-playbook -i inventory/hosts.ini playbooks/setup-sentry.yaml
+```
+
+This will:
+1. Create `sentry` namespace
+2. Generate and store credentials
+3. Deploy infrastructure (PostgreSQL, Redis, Kafka, ClickHouse, Zookeeper)
+4. Deploy Sentry services (Web, Worker, Cron, Relay, Snuba, Symbolicator, Vroom)
+5. Run database migrations
+6. Create admin user
+7. Configure ingress for `sentry.academind.ir`
+
+### Sentry Components
+
+| Component | Purpose | Resources |
+|-----------|---------|-----------|
+| PostgreSQL | Primary database | 1Gi RAM, 20Gi disk |
+| Redis | Caching & queues | 512Mi RAM, 5Gi disk |
+| Kafka | Message streaming | 1Gi RAM, 10Gi disk |
+| ClickHouse | Analytics storage | 1Gi RAM, 20Gi disk |
+| Zookeeper | Kafka coordination | 512Mi RAM, 5Gi disk |
+| Sentry Web | Main UI & API | 1Gi RAM |
+| Sentry Worker | Background jobs | 1Gi RAM |
+| Sentry Cron | Scheduled tasks | 512Mi RAM |
+| Sentry Relay | Event ingestion | 512Mi RAM |
+| Snuba | Query service | 512Mi RAM |
+| Symbolicator | Source maps processing | 1Gi RAM, 10Gi disk |
+| Vroom | Session replay & profiling | 512Mi RAM |
+
+### Post-Deployment Setup
+
+After deployment, complete the following manual steps:
+
+#### 1. Access Sentry UI
+- URL: https://sentry.academind.ir
+- Get credentials: `ssh root@5.10.248.55 "cat /root/.sentry-credentials"`
+
+#### 2. First Login
+1. Login with admin credentials
+2. If you see "Unable to load configuration" - wait 30 seconds and refresh
+3. Complete the onboarding wizard
+
+#### 3. Create Projects
+1. Go to **Settings → Projects → Create Project**
+2. Create **dotnet-backend**:
+   - Platform: .NET
+   - Project Name: dotnet-backend
+3. Create **angular-frontend**:
+   - Platform: JavaScript / Angular
+   - Project Name: angular-frontend
+
+#### 4. Get DSN Values
+1. Go to **Settings → Projects → [project] → Client Keys (DSN)**
+2. Copy the DSN for each project
+3. DSN format: `https://[key]@sentry.academind.ir/[project-id]`
+
+#### 5. Create Auth Token (for source maps)
+1. Go to **Settings → Auth Tokens**
+2. Create new token with scopes:
+   - `project:releases`
+   - `org:read`
+3. Copy the token for CI/CD
+
+#### 6. Add GitHub Secrets
+Add these secrets to Fundamental.Backend and Fundamental.FrontEnd repos:
+```
+SENTRY_DSN          = Backend DSN
+SENTRY_DSN_FRONTEND = Frontend DSN  
+SENTRY_AUTH_TOKEN   = Auth token for source maps
+SENTRY_ORG          = sentry (default org name)
+SENTRY_PROJECT_BACKEND  = dotnet-backend
+SENTRY_PROJECT_FRONTEND = angular-frontend
+```
+
+#### 7. Configure CSRF (if needed)
+If you get CSRF errors, add your domain to the config:
+```bash
+# SSH to VPS and edit configmap
+ssh root@5.10.248.55
+microk8s kubectl edit configmap sentry-config -n sentry
+# Add to sentry.conf.py:
+# CSRF_TRUSTED_ORIGINS = ["https://sentry.academind.ir"]
+```
+
+### Verify Deployment
+
+```bash
+# Check pods
+ssh root@5.10.248.55 "microk8s kubectl get pods -n sentry"
+
+# Check services
+ssh root@5.10.248.55 "microk8s kubectl get svc -n sentry"
+
+# Check ingress
+ssh root@5.10.248.55 "microk8s kubectl get ingress -n sentry"
+
+# View credentials
+ssh root@5.10.248.55 "cat /root/.sentry-credentials"
+```
+
+### Troubleshooting
+
+```bash
+# Check migration job logs
+ssh root@5.10.248.55 "microk8s kubectl logs -n sentry job/sentry-init-migrations"
+
+# Check web pod logs
+ssh root@5.10.248.55 "microk8s kubectl logs -n sentry deployment/sentry-web"
+
+# Restart deployment
+ssh root@5.10.248.55 "microk8s kubectl rollout restart -n sentry deployment/sentry-web"
+```
+
 ### Best Practices
 
 1. **Idempotency**: Tasks should be safe to run multiple times
@@ -445,3 +572,4 @@ ansible-playbook playbooks/setup-vps.yaml --skip-tags "microk8s"
 - [Ansible Documentation](https://docs.ansible.com/)
 - [Ansible for DevOps (Book)](https://www.ansiblefordevops.com/)
 - [Ansible Galaxy](https://galaxy.ansible.com/) - Community roles (like NuGet.org)
+- [Sentry Self-Hosted Documentation](https://develop.sentry.dev/self-hosted/)
