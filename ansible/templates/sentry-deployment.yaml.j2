@@ -152,6 +152,18 @@ data:
     })
     
     # =============================================================================
+    # CSRF Configuration (required when behind reverse proxy/ingress)
+    # =============================================================================
+    CSRF_TRUSTED_ORIGINS = ["https://{{ sentry_domain }}"]
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    
+    # =============================================================================
+    # Celery Broker URL (explicit for worker processes)
+    # =============================================================================
+    CELERY_BROKER_URL = BROKER_URL
+    
+    # =============================================================================
     # Secret Key
     # =============================================================================
     SECRET_KEY = os.environ.get("SENTRY_SECRET_KEY", "")
@@ -847,7 +859,8 @@ spec:
       containers:
         - name: sentry
           image: getsentry/sentry:{{ sentry_version }}
-          command: ["sentry", "run", "web"]
+          # -b flag binds uWSGI to all interfaces (required in Kubernetes)
+          command: ["sentry", "run", "web", "-b", "0.0.0.0:9000"]
           env:
             - name: SENTRY_SECRET_KEY
               valueFrom:
@@ -1066,6 +1079,62 @@ spec:
         - name: sentry-config
           configMap:
             name: sentry-config
+
+# =============================================================================
+# Snuba Migrations Job
+# =============================================================================
+# This job runs Snuba migrations to create all required ClickHouse tables.
+# It should run after ClickHouse and Kafka are available.
+# Manual step if job fails: kubectl exec into snuba-api pod and run:
+#   snuba migrations migrate --force
+# =============================================================================
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sentry-snuba-migrations
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-snuba-migrations
+    app.kubernetes.io/part-of: sentry
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: sentry-snuba-migrations
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Wait for ClickHouse to be ready
+        - name: wait-for-clickhouse
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z sentry-clickhouse 9000; do echo "Waiting for ClickHouse..."; sleep 5; done']
+        # Wait for Kafka to be ready
+        - name: wait-for-kafka
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z sentry-kafka 9092; do echo "Waiting for Kafka..."; sleep 5; done']
+      containers:
+        - name: snuba-migrations
+          image: getsentry/snuba:{{ sentry_version }}
+          command: ["snuba", "migrations", "migrate", "--force"]
+          env:
+            - name: SNUBA_SETTINGS
+              value: docker
+            - name: CLICKHOUSE_HOST
+              value: sentry-clickhouse
+            - name: KAFKA_BROKER
+              value: sentry-kafka:9092
+            - name: DEFAULT_BROKERS
+              value: sentry-kafka:9092
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 
 # =============================================================================
 # Ingress
