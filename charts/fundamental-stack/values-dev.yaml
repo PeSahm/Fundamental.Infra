@@ -44,7 +44,8 @@ backend:
   podDisruptionBudget:
     enabled: false
   
-  extraEnv:
+  # Additional environment variables (must match template's .Values.backend.env)
+  env:
     - name: ASPNETCORE_DETAILEDERRORS
       value: "true"
     - name: Logging__LogLevel__Default

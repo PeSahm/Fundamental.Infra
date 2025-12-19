@@ -48,6 +48,16 @@ backend:
     enabled: true
     minAvailable: 1
   
+  # Sentry configuration for production
+  env:
+    - name: Sentry__Dsn
+      valueFrom:
+        secretKeyRef:
+          name: sentry-credentials
+          key: dsn
+    - name: SENTRY_RELEASE
+      value: "fundamental-backend@prod"
+  
   secrets:
     existingSecret: "fundamental-backend-secrets"
     keys:
