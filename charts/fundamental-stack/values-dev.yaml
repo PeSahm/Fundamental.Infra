@@ -90,6 +90,17 @@ frontend:
     enabled: false
   
   apiBaseUrl: "/api"
+  
+  # Sentry configuration for frontend
+  # Note: Frontend DSN is typically baked at build time, but can be injected via env
+  env:
+    - name: SENTRY_DSN
+      valueFrom:
+        secretKeyRef:
+          name: sentry-credentials
+          key: frontend-dsn
+    - name: SENTRY_RELEASE
+      value: "fundamental-frontend@dev"
 
 # =============================================================================
 # Migrator (Development)

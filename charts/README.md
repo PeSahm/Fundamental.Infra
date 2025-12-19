@@ -281,6 +281,134 @@ Create secrets manually or use:
 - **Sealed Secrets**
 - **HashiCorp Vault**
 
+## Sentry Integration (Error Tracking & Monitoring)
+
+The stack integrates with [Sentry](https://sentry.io) for error tracking, performance monitoring, and session replay.
+
+### Prerequisites
+
+1. A running Sentry instance (self-hosted at `sentry.academind.ir` or SaaS)
+2. Create projects in Sentry:
+   - **Backend**: Platform `.NET`
+   - **Frontend**: Platform `Angular`
+3. Get the DSN (Data Source Name) from each project's Settings → Client Keys
+
+### Create Sentry Credentials Secret
+
+```bash
+# Replace with your actual DSNs from Sentry
+BACKEND_DSN="https://<key>@sentry.academind.ir/1"
+FRONTEND_DSN="https://<key>@sentry.academind.ir/2"
+
+# Development namespace
+kubectl -n fundamental-dev create secret generic sentry-credentials \
+  --from-literal=dsn="$BACKEND_DSN" \
+  --from-literal=frontend-dsn="$FRONTEND_DSN"
+
+# Production namespace
+kubectl -n fundamental-prod create secret generic sentry-credentials \
+  --from-literal=dsn="$BACKEND_DSN" \
+  --from-literal=frontend-dsn="$FRONTEND_DSN"
+```
+
+### Update DSN (Change Sentry Keys)
+
+To update the DSN values after initial creation:
+
+```bash
+# Method 1: Delete and recreate
+kubectl -n fundamental-dev delete secret sentry-credentials
+kubectl -n fundamental-dev create secret generic sentry-credentials \
+  --from-literal=dsn="https://NEW_KEY@sentry.academind.ir/1" \
+  --from-literal=frontend-dsn="https://NEW_KEY@sentry.academind.ir/2"
+
+# Method 2: Patch existing secret (base64 encoded)
+NEW_DSN=$(echo -n "https://newkey@sentry.academind.ir/1" | base64)
+kubectl -n fundamental-dev patch secret sentry-credentials \
+  -p "{\"data\":{\"dsn\":\"$NEW_DSN\"}}"
+
+# After updating, restart deployments to pick up changes
+kubectl -n fundamental-dev rollout restart deployment -l app.kubernetes.io/component=backend
+kubectl -n fundamental-dev rollout restart deployment -l app.kubernetes.io/component=frontend
+```
+
+### View in Kubernetes Dashboard
+
+1. **Access the Dashboard**:
+   ```bash
+   # Enable dashboard addon
+   microk8s enable dashboard
+   
+   # Get access token
+   microk8s kubectl create token default -n kube-system
+   
+   # Access via port-forward
+   microk8s kubectl port-forward -n kube-system service/kubernetes-dashboard 10443:443
+   # Open: https://localhost:10443
+   ```
+
+2. **Navigate to Secrets**:
+   - Select namespace: `fundamental-dev` or `fundamental-prod`
+   - Click **Config and Storage** → **Secrets**
+   - Click on `sentry-credentials`
+   - Click the 👁️ eye icon to reveal values
+
+3. **View Environment Variables**:
+   - Go to **Workloads** → **Deployments**
+   - Click on `fundamental-dev-fundamental-stack-backend`
+   - Click on a pod → **Containers** tab
+   - Scroll to **Environment Variables**
+
+### Values Configuration
+
+The DSN is injected via `values-dev.yaml` / `values-prod.yaml`:
+
+```yaml
+# Backend configuration
+backend:
+  env:
+    - name: Sentry__Dsn
+      valueFrom:
+        secretKeyRef:
+          name: sentry-credentials
+          key: dsn
+    - name: SENTRY_RELEASE
+      value: "fundamental-backend@dev"
+
+# Frontend configuration  
+frontend:
+  env:
+    - name: SENTRY_DSN
+      valueFrom:
+        secretKeyRef:
+          name: sentry-credentials
+          key: frontend-dsn
+    - name: SENTRY_RELEASE
+      value: "fundamental-frontend@dev"
+```
+
+### Features Enabled
+
+| Feature | Backend | Frontend |
+|---------|---------|----------|
+| Error Tracking | ✅ | ✅ |
+| Performance Monitoring | ✅ | ✅ |
+| Distributed Tracing | ✅ | ✅ |
+| Session Replay | ❌ | ✅ |
+| Profiling | ✅ | ❌ |
+
+### Session Replay (Frontend Only)
+
+Session Replay records user interactions as a video-like playback, showing exactly what the user did before an error occurred.
+
+Configuration in `main.ts`:
+```typescript
+Sentry.replayIntegration({
+  sessionSampleRate: 0.1,    // 10% of sessions
+  errorSampleRate: 1.0,      // 100% of sessions with errors
+})
+```
+
 ## GitOps with ArgoCD
 
 ### Architecture

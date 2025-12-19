@@ -93,6 +93,16 @@ frontend:
     minAvailable: 1
   
   apiBaseUrl: "/api"
+  
+  # Sentry configuration for frontend
+  env:
+    - name: SENTRY_DSN
+      valueFrom:
+        secretKeyRef:
+          name: sentry-credentials
+          key: frontend-dsn
+    - name: SENTRY_RELEASE
+      value: "fundamental-frontend@prod"
 
 # =============================================================================
 # Migrator (Production)
