@@ -182,22 +182,29 @@
                           secretKeyRef:
                             name: sentry-secrets
                             key: secret-key
-                      - name: SENTRY_POSTGRES_HOST
-                        value: "sentry-postgres"
-                      - name: SENTRY_DB_USER
-                        value: "sentry"
-                      - name: SENTRY_DB_PASSWORD
+                      - name: POSTGRES_PASSWORD
                         valueFrom:
                           secretKeyRef:
                             name: sentry-secrets
                             key: postgres-password
-                      - name: SENTRY_REDIS_HOST
-                        value: "sentry-redis"
-                      - name: SENTRY_REDIS_PASSWORD
+                      - name: REDIS_PASSWORD
                         valueFrom:
                           secretKeyRef:
                             name: sentry-secrets
                             key: redis-password
+                      - name: SENTRY_CONF
+                        value: "/etc/sentry"
+                    volumeMounts:
+                      - name: sentry-config
+                        mountPath: /etc/sentry/sentry.conf.py
+                        subPath: sentry.conf.py
+                      - name: sentry-config
+                        mountPath: /etc/sentry/config.yml
+                        subPath: config.yml
+                volumes:
+                  - name: sentry-config
+                    configMap:
+                      name: sentry-config
     
     - name: Wait for migrations to complete
       kubernetes.core.k8s_info:
@@ -247,15 +254,29 @@
                           secretKeyRef:
                             name: sentry-secrets
                             key: secret-key
-                      - name: SENTRY_POSTGRES_HOST
-                        value: "sentry-postgres"
-                      - name: SENTRY_DB_USER
-                        value: "sentry"
-                      - name: SENTRY_DB_PASSWORD
+                      - name: POSTGRES_PASSWORD
                         valueFrom:
                           secretKeyRef:
                             name: sentry-secrets
                             key: postgres-password
+                      - name: REDIS_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: sentry-secrets
+                            key: redis-password
+                      - name: SENTRY_CONF
+                        value: "/etc/sentry"
+                    volumeMounts:
+                      - name: sentry-config
+                        mountPath: /etc/sentry/sentry.conf.py
+                        subPath: sentry.conf.py
+                      - name: sentry-config
+                        mountPath: /etc/sentry/config.yml
+                        subPath: config.yml
+                volumes:
+                  - name: sentry-config
+                    configMap:
+                      name: sentry-config
       no_log: true
     
     # =========================================================================
