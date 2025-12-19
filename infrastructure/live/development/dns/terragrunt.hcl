@@ -43,7 +43,8 @@ inputs = {
   # Development subdomains (different from production)
   # registry and argocd are shared between dev/prod
   # k8s is for Kubernetes Dashboard
-  subdomains = ["dev", "dev-api", "argocd", "registry", "k8s"]
+  # sentry is for centralized error tracking (shared)
+  subdomains = ["dev", "dev-api", "argocd", "registry", "k8s", "sentry"]
   
   # Enable Cloudflare proxy (orange cloud) for DDoS protection
   proxied = true

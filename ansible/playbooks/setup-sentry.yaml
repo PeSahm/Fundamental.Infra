@@ -1,0 +1,286 @@
+# =============================================================================
+# Sentry Self-Hosted - Simplified Kubernetes Deployment
+# =============================================================================
+# This playbook deploys Sentry using the official self-hosted installer
+# modified for Kubernetes environments.
+# =============================================================================
+---
+- name: Deploy Sentry Self-Hosted
+  hosts: vps
+  become: yes
+  
+  vars:
+    sentry_namespace: "sentry"
+    sentry_domain: "sentry.academind.ir"
+    sentry_version: "24.11.1"
+    
+    # Credentials (override with ansible-vault in production)
+    sentry_admin_email: "admin@academind.ir"
+    sentry_admin_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    sentry_secret_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits') }}"
+    sentry_postgres_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    sentry_redis_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    
+    # Storage
+    sentry_storage_class: "microk8s-hostpath"
+    
+  tasks:
+    # =========================================================================
+    # Create Namespace
+    # =========================================================================
+    - name: Create Sentry namespace
+      kubernetes.core.k8s:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ sentry_namespace }}"
+            labels:
+              app.kubernetes.io/name: sentry
+      
+    # =========================================================================
+    # Create Secrets
+    # =========================================================================
+    - name: Create Sentry secrets
+      kubernetes.core.k8s:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: sentry-secrets
+            namespace: "{{ sentry_namespace }}"
+          type: Opaque
+          stringData:
+            secret-key: "{{ sentry_secret_key }}"
+            postgres-password: "{{ sentry_postgres_password }}"
+            redis-password: "{{ sentry_redis_password }}"
+            admin-email: "{{ sentry_admin_email }}"
+            admin-password: "{{ sentry_admin_password }}"
+    
+    # =========================================================================
+    # Store credentials for later reference
+    # =========================================================================
+    - name: Save credentials to file
+      copy:
+        content: |
+          # Sentry Credentials
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          Admin Email: {{ sentry_admin_email }}
+          Admin Password: {{ sentry_admin_password }}
+          
+          Secret Key: {{ sentry_secret_key }}
+          PostgreSQL Password: {{ sentry_postgres_password }}
+          Redis Password: {{ sentry_redis_password }}
+          
+          URL: https://{{ sentry_domain }}
+        dest: /root/.sentry-credentials
+        mode: '0600'
+      no_log: true
+    
+    # =========================================================================
+    # Create PVCs
+    # =========================================================================
+    - name: Create PVCs
+      kubernetes.core.k8s:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "sentry-{{ item.name }}-pvc"
+            namespace: "{{ sentry_namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: "{{ item.size }}"
+            storageClassName: "{{ sentry_storage_class }}"
+      loop:
+        - { name: postgres, size: "20Gi" }
+        - { name: redis, size: "5Gi" }
+        - { name: kafka, size: "10Gi" }
+        - { name: clickhouse, size: "20Gi" }
+        - { name: zookeeper, size: "5Gi" }
+        - { name: files, size: "20Gi" }
+        - { name: symbolicator, size: "10Gi" }
+    
+    # =========================================================================
+    # Deploy Sentry Stack via Kustomize/Helm
+    # =========================================================================
+    - name: Apply Sentry Kubernetes manifests
+      shell: |
+        cat <<'EOF' | microk8s kubectl apply -f -
+        {{ lookup('template', '../templates/sentry-deployment.yaml.j2') }}
+        EOF
+      register: sentry_deploy
+      changed_when: "'created' in sentry_deploy.stdout or 'configured' in sentry_deploy.stdout"
+    
+    # =========================================================================
+    # Wait for PostgreSQL
+    # =========================================================================
+    - name: Wait for PostgreSQL to be ready
+      kubernetes.core.k8s_info:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        kind: Pod
+        namespace: "{{ sentry_namespace }}"
+        label_selectors:
+          - app=sentry-postgres
+        wait: yes
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 300
+    
+    # =========================================================================
+    # Wait for Redis
+    # =========================================================================
+    - name: Wait for Redis to be ready
+      kubernetes.core.k8s_info:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        kind: Pod
+        namespace: "{{ sentry_namespace }}"
+        label_selectors:
+          - app=sentry-redis
+        wait: yes
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 300
+    
+    # =========================================================================
+    # Run Sentry Migrations (init job)
+    # =========================================================================
+    - name: Run Sentry database migrations
+      kubernetes.core.k8s:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        state: present
+        definition:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: sentry-init-migrations
+            namespace: "{{ sentry_namespace }}"
+          spec:
+            ttlSecondsAfterFinished: 3600
+            template:
+              spec:
+                restartPolicy: OnFailure
+                containers:
+                  - name: sentry-upgrade
+                    image: "getsentry/sentry:{{ sentry_version }}"
+                    command: ["sentry", "upgrade", "--noinput"]
+                    env:
+                      - name: SENTRY_SECRET_KEY
+                        valueFrom:
+                          secretKeyRef:
+                            name: sentry-secrets
+                            key: secret-key
+                      - name: SENTRY_POSTGRES_HOST
+                        value: "sentry-postgres"
+                      - name: SENTRY_DB_USER
+                        value: "sentry"
+                      - name: SENTRY_DB_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: sentry-secrets
+                            key: postgres-password
+                      - name: SENTRY_REDIS_HOST
+                        value: "sentry-redis"
+                      - name: SENTRY_REDIS_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: sentry-secrets
+                            key: redis-password
+    
+    - name: Wait for migrations to complete
+      kubernetes.core.k8s_info:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        kind: Job
+        namespace: "{{ sentry_namespace }}"
+        name: sentry-init-migrations
+      register: migration_job
+      until: migration_job.resources[0].status.succeeded | default(0) >= 1
+      retries: 30
+      delay: 20
+      ignore_errors: yes
+    
+    # =========================================================================
+    # Create Admin User
+    # =========================================================================
+    - name: Create Sentry admin user
+      kubernetes.core.k8s:
+        kubeconfig: /var/snap/microk8s/current/credentials/client.config
+        state: present
+        definition:
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: sentry-create-admin
+            namespace: "{{ sentry_namespace }}"
+          spec:
+            ttlSecondsAfterFinished: 3600
+            template:
+              spec:
+                restartPolicy: OnFailure
+                containers:
+                  - name: sentry-createuser
+                    image: "getsentry/sentry:{{ sentry_version }}"
+                    command:
+                      - sentry
+                      - createuser
+                      - --email
+                      - "{{ sentry_admin_email }}"
+                      - --password
+                      - "{{ sentry_admin_password }}"
+                      - --superuser
+                      - --no-input
+                    env:
+                      - name: SENTRY_SECRET_KEY
+                        valueFrom:
+                          secretKeyRef:
+                            name: sentry-secrets
+                            key: secret-key
+                      - name: SENTRY_POSTGRES_HOST
+                        value: "sentry-postgres"
+                      - name: SENTRY_DB_USER
+                        value: "sentry"
+                      - name: SENTRY_DB_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: sentry-secrets
+                            key: postgres-password
+      no_log: true
+    
+    # =========================================================================
+    # Print Summary
+    # =========================================================================
+    - name: Print deployment summary
+      debug:
+        msg: |
+          ============================================
+          Sentry Deployment Complete!
+          ============================================
+          
+          URL: https://{{ sentry_domain }}
+          Admin Email: {{ sentry_admin_email }}
+          Admin Password: {{ sentry_admin_password }}
+          
+          Credentials saved to: /root/.sentry-credentials
+          
+          To create projects:
+          1. Login to {{ sentry_domain }}
+          2. Create organization: "fundamental"
+          3. Create projects:
+             - "dotnet-backend" (Platform: .NET)
+             - "angular-frontend" (Platform: JavaScript/Angular)
+          4. Copy DSN values to GitHub secrets:
+             - SENTRY_DSN (for each project)
+             - SENTRY_AUTH_TOKEN (create in Settings > Auth Tokens)
+          ============================================

@@ -1,0 +1,10 @@
+# =============================================================================
+# Sentry Namespace
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: sentry
+    app.kubernetes.io/instance: {{ .Release.Name }}

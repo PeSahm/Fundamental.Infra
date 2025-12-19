@@ -1,0 +1,898 @@
+# =============================================================================
+# Sentry Kubernetes Deployments
+# =============================================================================
+# This file contains all Kubernetes resources for Sentry self-hosted
+# =============================================================================
+
+# =============================================================================
+# PostgreSQL
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-postgres
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-postgres
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-postgres
+  template:
+    metadata:
+      labels:
+        app: sentry-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          env:
+            - name: POSTGRES_USER
+              value: "sentry"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: POSTGRES_DB
+              value: "sentry"
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "sentry"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: sentry-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-postgres
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+# =============================================================================
+# Redis
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-redis
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-redis
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-redis
+  template:
+    metadata:
+      labels:
+        app: sentry-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - redis-server
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: sentry-redis-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-redis
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+
+# =============================================================================
+# Zookeeper (for Kafka)
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-zookeeper
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-zookeeper
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-zookeeper
+  template:
+    metadata:
+      labels:
+        app: sentry-zookeeper
+    spec:
+      containers:
+        - name: zookeeper
+          image: confluentinc/cp-zookeeper:7.5.0
+          env:
+            - name: ZOOKEEPER_CLIENT_PORT
+              value: "2181"
+            - name: ZOOKEEPER_TICK_TIME
+              value: "2000"
+          ports:
+            - containerPort: 2181
+          volumeMounts:
+            - name: zookeeper-data
+              mountPath: /var/lib/zookeeper/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: zookeeper-data
+          persistentVolumeClaim:
+            claimName: sentry-zookeeper-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-zookeeper
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-zookeeper
+  ports:
+    - port: 2181
+      targetPort: 2181
+
+# =============================================================================
+# Kafka
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-kafka
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-kafka
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-kafka
+  template:
+    metadata:
+      labels:
+        app: sentry-kafka
+    spec:
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.5.0
+          env:
+            - name: KAFKA_BROKER_ID
+              value: "1"
+            - name: KAFKA_ZOOKEEPER_CONNECT
+              value: "sentry-zookeeper:2181"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://sentry-kafka:9092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "24"
+          ports:
+            - containerPort: 9092
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: kafka-data
+          persistentVolumeClaim:
+            claimName: sentry-kafka-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-kafka
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-kafka
+  ports:
+    - port: 9092
+      targetPort: 9092
+
+# =============================================================================
+# ClickHouse
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-clickhouse
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-clickhouse
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-clickhouse
+  template:
+    metadata:
+      labels:
+        app: sentry-clickhouse
+    spec:
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:23.8-alpine
+          env:
+            - name: CLICKHOUSE_DB
+              value: "default"
+          ports:
+            - containerPort: 8123
+              name: http
+            - containerPort: 9000
+              name: native
+          volumeMounts:
+            - name: clickhouse-data
+              mountPath: /var/lib/clickhouse
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+      volumes:
+        - name: clickhouse-data
+          persistentVolumeClaim:
+            claimName: sentry-clickhouse-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-clickhouse
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+
+# =============================================================================
+# Snuba (Query API)
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-snuba-api
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-snuba-api
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-snuba-api
+  template:
+    metadata:
+      labels:
+        app: sentry-snuba-api
+    spec:
+      containers:
+        - name: snuba
+          image: getsentry/snuba:{{ sentry_version }}
+          command: ["snuba", "api"]
+          env:
+            - name: SNUBA_SETTINGS
+              value: "docker"
+            - name: CLICKHOUSE_HOST
+              value: "sentry-clickhouse"
+            - name: KAFKA_BROKER_LIST
+              value: "sentry-kafka:9092"
+            - name: REDIS_HOST
+              value: "sentry-redis"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+          ports:
+            - containerPort: 1218
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-snuba-api
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-snuba-api
+  ports:
+    - port: 1218
+      targetPort: 1218
+
+# =============================================================================
+# Snuba Consumer
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-snuba-consumer
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-snuba-consumer
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-snuba-consumer
+  template:
+    metadata:
+      labels:
+        app: sentry-snuba-consumer
+    spec:
+      containers:
+        - name: snuba
+          image: getsentry/snuba:{{ sentry_version }}
+          command: ["snuba", "consumer", "--storage", "errors", "--auto-offset-reset=latest"]
+          env:
+            - name: SNUBA_SETTINGS
+              value: "docker"
+            - name: CLICKHOUSE_HOST
+              value: "sentry-clickhouse"
+            - name: KAFKA_BROKER_LIST
+              value: "sentry-kafka:9092"
+            - name: REDIS_HOST
+              value: "sentry-redis"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+# =============================================================================
+# Symbolicator (Source Maps & Debug Symbols)
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-symbolicator
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-symbolicator
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-symbolicator
+  template:
+    metadata:
+      labels:
+        app: sentry-symbolicator
+    spec:
+      containers:
+        - name: symbolicator
+          image: getsentry/symbolicator:{{ sentry_version }}
+          env:
+            - name: SYMBOLICATOR_ENABLE_JS_PROCESSING
+              value: "true"
+          ports:
+            - containerPort: 3021
+          volumeMounts:
+            - name: symbolicator-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: symbolicator-data
+          persistentVolumeClaim:
+            claimName: sentry-symbolicator-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-symbolicator
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-symbolicator
+  ports:
+    - port: 3021
+      targetPort: 3021
+
+# =============================================================================
+# Vroom (Session Replay & Profiling)
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-vroom
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-vroom
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-vroom
+  template:
+    metadata:
+      labels:
+        app: sentry-vroom
+    spec:
+      containers:
+        - name: vroom
+          image: getsentry/vroom:{{ sentry_version }}
+          env:
+            - name: SENTRY_KAFKA_BROKERS
+              value: "sentry-kafka:9092"
+          ports:
+            - containerPort: 8085
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-vroom
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-vroom
+  ports:
+    - port: 8085
+      targetPort: 8085
+
+# =============================================================================
+# Relay (Event Ingestion)
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-relay
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-relay
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-relay
+  template:
+    metadata:
+      labels:
+        app: sentry-relay
+    spec:
+      containers:
+        - name: relay
+          image: getsentry/relay:{{ sentry_version }}
+          env:
+            - name: RELAY_UPSTREAM__URL
+              value: "http://sentry-web:9000/"
+            - name: RELAY_MODE
+              value: "managed"
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: relay-config
+              mountPath: /work/.relay
+      volumes:
+        - name: relay-config
+          configMap:
+            name: sentry-config
+            items:
+              - key: relay-config.yml
+                path: config.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-relay
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-relay
+  ports:
+    - port: 3000
+      targetPort: 3000
+
+# =============================================================================
+# Sentry Web (Main Application)
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-web
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-web
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-web
+  template:
+    metadata:
+      labels:
+        app: sentry-web
+    spec:
+      containers:
+        - name: sentry
+          image: getsentry/sentry:{{ sentry_version }}
+          command: ["sentry", "run", "web"]
+          env:
+            - name: SENTRY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: secret-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+            - name: SENTRY_POSTGRES_HOST
+              value: "sentry-postgres"
+            - name: SENTRY_REDIS_HOST
+              value: "sentry-redis"
+            - name: SNUBA
+              value: "http://sentry-snuba-api:1218"
+            - name: SENTRY_RELAY_HOST
+              value: "sentry-relay"
+            - name: SENTRY_SYMBOLICATOR_URL
+              value: "http://sentry-symbolicator:3021"
+            - name: SENTRY_VROOM_URL
+              value: "http://sentry-vroom:8085"
+            - name: KAFKA_CLUSTERS
+              value: '{"default": {"bootstrap.servers": "sentry-kafka:9092"}}'
+          ports:
+            - containerPort: 9000
+          volumeMounts:
+            - name: sentry-files
+              mountPath: /data/files
+            - name: sentry-config
+              mountPath: /etc/sentry/sentry.conf.py
+              subPath: sentry.conf.py
+            - name: sentry-config
+              mountPath: /etc/sentry/config.yml
+              subPath: config.yml
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /_health/
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_health/
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: sentry-files
+          persistentVolumeClaim:
+            claimName: sentry-files-pvc
+        - name: sentry-config
+          configMap:
+            name: sentry-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-web
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-web
+  ports:
+    - port: 9000
+      targetPort: 9000
+
+# =============================================================================
+# Sentry Worker
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-worker
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-worker
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-worker
+  template:
+    metadata:
+      labels:
+        app: sentry-worker
+    spec:
+      containers:
+        - name: sentry
+          image: getsentry/sentry:{{ sentry_version }}
+          command: ["sentry", "run", "worker"]
+          env:
+            - name: SENTRY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: secret-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+            - name: SENTRY_POSTGRES_HOST
+              value: "sentry-postgres"
+            - name: SENTRY_REDIS_HOST
+              value: "sentry-redis"
+            - name: SNUBA
+              value: "http://sentry-snuba-api:1218"
+            - name: SENTRY_SYMBOLICATOR_URL
+              value: "http://sentry-symbolicator:3021"
+            - name: KAFKA_CLUSTERS
+              value: '{"default": {"bootstrap.servers": "sentry-kafka:9092"}}'
+          volumeMounts:
+            - name: sentry-files
+              mountPath: /data/files
+            - name: sentry-config
+              mountPath: /etc/sentry/sentry.conf.py
+              subPath: sentry.conf.py
+            - name: sentry-config
+              mountPath: /etc/sentry/config.yml
+              subPath: config.yml
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: sentry-files
+          persistentVolumeClaim:
+            claimName: sentry-files-pvc
+        - name: sentry-config
+          configMap:
+            name: sentry-config
+
+# =============================================================================
+# Sentry Cron
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-cron
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-cron
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-cron
+  template:
+    metadata:
+      labels:
+        app: sentry-cron
+    spec:
+      containers:
+        - name: sentry
+          image: getsentry/sentry:{{ sentry_version }}
+          command: ["sentry", "run", "cron"]
+          env:
+            - name: SENTRY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: secret-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+            - name: SENTRY_POSTGRES_HOST
+              value: "sentry-postgres"
+            - name: SENTRY_REDIS_HOST
+              value: "sentry-redis"
+          volumeMounts:
+            - name: sentry-config
+              mountPath: /etc/sentry/sentry.conf.py
+              subPath: sentry.conf.py
+            - name: sentry-config
+              mountPath: /etc/sentry/config.yml
+              subPath: config.yml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: sentry-config
+          configMap:
+            name: sentry-config
+
+# =============================================================================
+# Ingress
+# =============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sentry-ingress
+  namespace: {{ sentry_namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: public
+  tls:
+    - hosts:
+        - {{ sentry_domain }}
+      secretName: sentry-tls
+  rules:
+    - host: {{ sentry_domain }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: sentry-relay
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sentry-web
+                port:
+                  number: 9000

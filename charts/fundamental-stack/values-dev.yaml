@@ -49,6 +49,14 @@ backend:
       value: "true"
     - name: Logging__LogLevel__Default
       value: "Debug"
+    # Sentry configuration
+    - name: Sentry__Dsn
+      valueFrom:
+        secretKeyRef:
+          name: sentry-credentials
+          key: dsn
+    - name: SENTRY_RELEASE
+      value: "fundamental-backend@dev"
   
   secrets:
     existingSecret: "fundamental-backend-secrets"

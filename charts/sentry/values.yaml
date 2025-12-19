@@ -1,0 +1,447 @@
+# =============================================================================
+# Sentry Self-Hosted - Default Values
+# =============================================================================
+# Complete configuration for self-hosted Sentry deployment with:
+# - Session Replay
+# - Source Maps support
+# - GitHub Integration
+# - Performance Monitoring
+# =============================================================================
+
+# Global settings
+global:
+  # Storage class for all PVCs
+  storageClass: ""
+  
+  # Image pull secrets
+  imagePullSecrets: []
+
+# =============================================================================
+# Sentry Core Configuration
+# =============================================================================
+sentry:
+  # Sentry images
+  images:
+    sentry:
+      repository: getsentry/sentry
+      tag: "24.11.1"
+      pullPolicy: IfNotPresent
+    relay:
+      repository: getsentry/relay
+      tag: "24.11.1"
+      pullPolicy: IfNotPresent
+    snuba:
+      repository: getsentry/snuba
+      tag: "24.11.1"
+      pullPolicy: IfNotPresent
+    symbolicator:
+      repository: getsentry/symbolicator
+      tag: "24.11.1"
+      pullPolicy: IfNotPresent
+    vroom:
+      repository: getsentry/vroom
+      tag: "24.11.1"
+      pullPolicy: IfNotPresent
+
+  # Secret configuration
+  existingSecret: "sentry-secrets"
+  secretKeys:
+    secretKey: "secret-key"
+    
+  # System configuration
+  system:
+    # Public URL for Sentry (used in emails, source maps, etc.)
+    url: "https://sentry.academind.ir"
+    # Admin email
+    adminEmail: "admin@academind.ir"
+    # Internal IPs that can access system endpoints
+    internalIps: []
+
+  # =========================================================================
+  # Feature Flags
+  # =========================================================================
+  features:
+    # Enable Session Replay
+    sessionReplay: true
+    # Enable Performance Monitoring
+    performance: true
+    # Enable Profiling
+    profiling: true
+    # Enable Custom Metrics
+    customMetrics: true
+    # Enable Issue Platform
+    issuePlatform: true
+    # Enable User Feedback
+    userFeedback: true
+    # Enable Alerts
+    alerts: true
+    # Enable Dashboards
+    dashboards: true
+    # Enable Discover (query builder)
+    discover: true
+
+  # =========================================================================
+  # GitHub Integration
+  # =========================================================================
+  github:
+    enabled: true
+    # GitHub App configuration (set via secrets)
+    appId: ""
+    appName: "Sentry-Fundamental"
+    # Will be configured from secrets
+    privateKeySecret: "sentry-github"
+    privateKeySecretKey: "private-key"
+    webhookSecret: "sentry-github"
+    webhookSecretKey: "webhook-secret"
+    clientId: ""
+    clientSecret: ""
+
+  # =========================================================================
+  # Mail Configuration
+  # =========================================================================
+  mail:
+    enabled: true
+    backend: "smtp"
+    host: "smtp.gmail.com"
+    port: 587
+    useTls: true
+    username: ""
+    # Password from secret
+    existingSecret: "sentry-mail"
+    secretKey: "password"
+    from: "sentry@academind.ir"
+
+  # =========================================================================
+  # Source Maps & Debug Symbols
+  # =========================================================================
+  sourceMaps:
+    # Enable source map processing
+    enabled: true
+    # Storage for source maps and debug files
+    storage:
+      backend: "filesystem"  # or "gcs", "s3"
+      # Filesystem storage
+      filesystem:
+        path: "/data/files"
+        size: 20Gi
+
+  # =========================================================================
+  # Symbolicator (for native crash symbolication & source maps)
+  # =========================================================================
+  symbolicator:
+    enabled: true
+    replicaCount: 1
+    
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    
+    # Cache configuration
+    cache:
+      size: 10Gi
+      
+    # Processing configuration
+    processing:
+      # Enable JavaScript source map processing
+      jsSourceMaps: true
+      # Enable .NET PDB processing  
+      dotnetPdb: true
+      # Enable native symbolication
+      native: true
+
+  # =========================================================================
+  # Replay (Session Replay)
+  # =========================================================================
+  replay:
+    enabled: true
+    
+    # Vroom service for replay processing
+    vroom:
+      enabled: true
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+# =============================================================================
+# Web Service
+# =============================================================================
+web:
+  replicaCount: 1
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Liveness and readiness probes
+  livenessProbe:
+    httpGet:
+      path: /_health/
+      port: 9000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+
+  readinessProbe:
+    httpGet:
+      path: /_health/
+      port: 9000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# =============================================================================
+# Worker Service
+# =============================================================================
+worker:
+  replicaCount: 1
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# =============================================================================
+# Cron Service
+# =============================================================================
+cron:
+  replicaCount: 1
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
+# Relay Service (Event ingestion)
+# =============================================================================
+relay:
+  replicaCount: 1
+  
+  # Relay mode: managed, static, proxy
+  mode: "managed"
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
+# Snuba (Query service)
+# =============================================================================
+snuba:
+  api:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  consumer:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  replacer:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  enabled: true
+  className: "public"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  
+  hosts:
+    - host: sentry.academind.ir
+      paths:
+        - path: /
+          pathType: Prefix
+  
+  tls:
+    - secretName: sentry-tls
+      hosts:
+        - sentry.academind.ir
+
+# =============================================================================
+# PostgreSQL (Sentry's primary database)
+# =============================================================================
+postgresql:
+  enabled: true
+  
+  auth:
+    database: sentry
+    username: sentry
+    existingSecret: "sentry-postgresql"
+    secretKeys:
+      userPasswordKey: "password"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# =============================================================================
+# Redis (Caching and queuing)
+# =============================================================================
+redis:
+  enabled: true
+  
+  architecture: standalone
+  
+  auth:
+    enabled: true
+    existingSecret: "sentry-redis"
+    existingSecretPasswordKey: "password"
+  
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# =============================================================================
+# Kafka (Event streaming)
+# =============================================================================
+kafka:
+  enabled: true
+  
+  controller:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      size: 10Gi
+    
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# =============================================================================
+# ClickHouse (Analytics database)
+# =============================================================================
+clickhouse:
+  enabled: true
+  
+  shards: 1
+  replicaCount: 1
+  
+  persistence:
+    enabled: true
+    size: 20Gi
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# =============================================================================
+# Zookeeper (For Kafka and ClickHouse coordination)
+# =============================================================================
+zookeeper:
+  enabled: true
+  
+  replicaCount: 1
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# =============================================================================
+# Service Account
+# =============================================================================
+serviceAccount:
+  create: true
+  name: "sentry"
+  annotations: {}
+
+# =============================================================================
+# Init Jobs
+# =============================================================================
+init:
+  # Database migrations
+  migrations:
+    enabled: true
+  
+  # Create initial admin user
+  createAdmin:
+    enabled: true
+    # Admin credentials from secret
+    existingSecret: "sentry-admin"
+    secretKeys:
+      email: "email"
+      password: "password"

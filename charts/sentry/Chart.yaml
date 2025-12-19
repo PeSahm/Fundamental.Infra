@@ -1,0 +1,47 @@
+# =============================================================================
+# Sentry Self-Hosted Helm Chart
+# =============================================================================
+# This chart deploys a self-hosted Sentry instance for error tracking and
+# performance monitoring across development and production environments.
+#
+# Features:
+# - Session Replay support
+# - Source map upload (Angular, .NET PDB)
+# - GitHub integration
+# - Multi-project support (Backend + Frontend)
+# =============================================================================
+apiVersion: v2
+name: sentry
+description: Self-hosted Sentry for error tracking and performance monitoring
+type: application
+version: 1.0.0
+appVersion: "24.11.1"
+
+keywords:
+  - sentry
+  - error-tracking
+  - monitoring
+  - apm
+  - performance
+
+maintainers:
+  - name: Fundamental Team
+    email: admin@academind.ir
+
+dependencies:
+  - name: postgresql
+    version: "15.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "19.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: kafka
+    version: "30.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: kafka.enabled
+  - name: clickhouse
+    version: "6.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: clickhouse.enabled
