@@ -24,6 +24,27 @@ name: Update Image Tag
 on:
   repository_dispatch:
     types: [update-image-tag]
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to update (backend, frontend, migrator)'
+        required: true
+        type: choice
+        options:
+          - backend
+          - frontend
+          - migrator
+      tag:
+        description: 'Image tag to set'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
 
 env:
   # Supported components and their values file paths
@@ -40,33 +61,49 @@ jobs:
       contents: write
     
     steps:
+      - name: Set Variables
+        id: vars
+        run: |
+          # Handle both repository_dispatch and workflow_dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "component=${{ github.event.client_payload.component }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.client_payload.tag }}" >> $GITHUB_OUTPUT
+            echo "environment=${{ github.event.client_payload.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "component=${{ github.event.inputs.component }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Validate Input
         run: |
+          COMPONENT="${{ steps.vars.outputs.component }}"
+          TAG="${{ steps.vars.outputs.tag }}"
+          ENV="${{ steps.vars.outputs.environment }}"
+
           # Validate required inputs
-          if [ -z "${{ github.event.client_payload.component }}" ]; then
+          if [ -z "$COMPONENT" ]; then
             echo "Error: component is required"
             exit 1
           fi
           
-          if [ -z "${{ github.event.client_payload.tag }}" ]; then
+          if [ -z "$TAG" ]; then
             echo "Error: tag is required"
             exit 1
           fi
           
-          if [ -z "${{ github.event.client_payload.environment }}" ]; then
+          if [ -z "$ENV" ]; then
             echo "Error: environment is required"
             exit 1
           fi
           
           # Validate component
-          COMPONENT="${{ github.event.client_payload.component }}"
           if [[ ! "$COMPONENT" =~ ^(backend|frontend|migrator)$ ]]; then
             echo "Error: Invalid component. Must be 'backend', 'frontend', or 'migrator'"
             exit 1
           fi
           
           # Validate environment
-          ENV="${{ github.event.client_payload.environment }}"
           if [[ ! "$ENV" =~ ^(dev|prod)$ ]]; then
             echo "Error: Invalid environment. Must be 'dev' or 'prod'"
             exit 1
@@ -74,7 +111,7 @@ jobs:
           
           echo "✅ Input validation passed"
           echo "Component: $COMPONENT"
-          echo "Tag: ${{ github.event.client_payload.tag }}"
+          echo "Tag: $TAG"
           echo "Environment: $ENV"
       
       - name: Checkout Repository
@@ -89,9 +126,9 @@ jobs:
       - name: Update Image Tag
         id: update
         run: |
-          COMPONENT="${{ github.event.client_payload.component }}"
-          TAG="${{ github.event.client_payload.tag }}"
-          ENV="${{ github.event.client_payload.environment }}"
+          COMPONENT="${{ steps.vars.outputs.component }}"
+          TAG="${{ steps.vars.outputs.tag }}"
+          ENV="${{ steps.vars.outputs.environment }}"
           
           # Determine values file
           VALUES_FILE="charts/fundamental-stack/values-${ENV}.yaml"
