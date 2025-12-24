@@ -5,14 +5,18 @@
 # The registry is exposed via Kubernetes Ingress (not host nginx)
 #
 # This playbook:
-# 1. Generates registry credentials
+# 1. Loads or generates registry credentials (persistent)
 # 2. Configures containerd to trust the registry
 # 3. Updates Kubernetes secrets for image pull
 #
+# IMPORTANT: Password is persisted in /root/.fundamental-credentials/registry-password
+#            To force regeneration, delete that file before running
+#
+# After running this playbook, run setup-github-secrets.yaml to sync credentials:
+#   ansible-playbook playbooks/setup-github-secrets.yaml
+#
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-registry-proxy.yaml
-#
-# The actual registry ingress is managed by Helm chart (registryIngress in values)
 
 - name: Setup Container Registry
   hosts: vps
@@ -22,8 +26,62 @@
   vars:
     # registry_domain loaded from group_vars/all.yaml
     microk8s_registry_port: 32000
-    # Generate htpasswd credentials (username from group_vars)
-    registry_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    # Password is loaded from file or generated (see pre_tasks)
+    registry_password_file: /root/.fundamental-credentials/registry-password
+
+  pre_tasks:
+    # =========================================
+    # Ensure credentials directory exists
+    # =========================================
+    - name: Create credentials directory
+      ansible.builtin.file:
+        path: /root/.fundamental-credentials
+        state: directory
+        mode: '0700'
+
+    # =========================================
+    # Load or Generate Registry Password (Persistent)
+    # =========================================
+    - name: Check if registry password file exists
+      ansible.builtin.stat:
+        path: "{{ registry_password_file }}"
+      register: password_file
+
+    - name: Read existing password
+      when: password_file.stat.exists
+      block:
+        - name: Load password from file
+          ansible.builtin.slurp:
+            src: "{{ registry_password_file }}"
+          register: password_content
+
+        - name: Set registry password from file
+          ansible.builtin.set_fact:
+            registry_password: "{{ password_content.content | b64decode | trim }}"
+          no_log: true
+
+        - name: Info - Using existing password
+          ansible.builtin.debug:
+            msg: "ℹ️  Using existing registry password from {{ registry_password_file }}"
+
+    - name: Generate new password if not exists
+      when: not password_file.stat.exists
+      block:
+        - name: Generate new registry password
+          ansible.builtin.set_fact:
+            registry_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+          no_log: true
+
+        - name: Save new password to file
+          ansible.builtin.copy:
+            content: "{{ registry_password }}"
+            dest: "{{ registry_password_file }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Info - Generated new password
+          ansible.builtin.debug:
+            msg: "🔑 Generated new registry password and saved to {{ registry_password_file }}"
 
   tasks:
     # =========================================
@@ -59,15 +117,9 @@
       notify: Restart MicroK8s containerd
 
     # =========================================
-    # Save registry credentials
+    # Save registry credentials summary file
     # =========================================
-    - name: Create credentials directory
-      ansible.builtin.file:
-        path: /root/.fundamental-credentials
-        state: directory
-        mode: '0700'
-
-    - name: Save registry credentials
+    - name: Save registry credentials summary
       ansible.builtin.copy:
         content: |
           # Container Registry Credentials
@@ -149,10 +201,14 @@
           - "✅ Registry credentials configured"
           - "🌐 URL: https://{{ registry_domain }}"
           - "👤 Username: {{ registry_username }}"
-          - "🔑 Credentials saved to: /root/.fundamental-credentials/registry-credentials.txt"
+          - "🔑 Password stored in: {{ registry_password_file }}"
+          - "📄 Summary saved to: /root/.fundamental-credentials/registry-credentials.txt"
           - ""
           - "ℹ️  Registry is exposed via Kubernetes Ingress (managed by Helm)"
           - "📋 Secrets created: registry-credentials, registry-auth"
+          - ""
+          - "⚠️  IMPORTANT: Run setup-github-secrets.yaml to sync credentials to GitHub:"
+          - "   ansible-playbook playbooks/setup-github-secrets.yaml"
 
     # =========================================
     # Fetch credentials to local
