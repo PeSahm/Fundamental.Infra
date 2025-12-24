@@ -19,6 +19,8 @@ skip_list:
   - ignore-errors
   # Variables names must not be Ansible reserved names
   - var-naming[no-reserved]
+  # The src argument should not use a relative path
+  - no-relative-paths
 
 # Configure rules
 warn_list:

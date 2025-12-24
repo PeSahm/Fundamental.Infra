@@ -13,6 +13,7 @@ rules:
     spaces: 2
     indent-sequences: true
   document-start: disable
+  braces: disable
 
 ignore:
   - .github/
