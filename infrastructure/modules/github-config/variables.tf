@@ -69,6 +69,42 @@ variable "registry_password" {
 }
 
 # -----------------------------------------------------------------------------
+# Sentry Configuration
+# -----------------------------------------------------------------------------
+
+variable "sentry_enabled" {
+  description = "Enable Sentry integration for error tracking"
+  type        = bool
+  default     = false
+}
+
+variable "sentry_dsn" {
+  description = "Sentry DSN for frontend error tracking"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "sentry_auth_token" {
+  description = "Sentry auth token for source map uploads"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "sentry_dsn_configured" {
+  description = "Whether Sentry DSN is configured (non-sensitive flag for for_each)"
+  type        = bool
+  default     = false
+}
+
+variable "sentry_auth_token_configured" {
+  description = "Whether Sentry auth token is configured (non-sensitive flag for for_each)"
+  type        = bool
+  default     = false
+}
+
+# -----------------------------------------------------------------------------
 # Repository Configuration
 # -----------------------------------------------------------------------------
 

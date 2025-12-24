@@ -210,3 +210,32 @@ resource "github_actions_variable" "registry" {
   variable_name = "CONTAINER_REGISTRY"
   value         = var.container_registry
 }
+
+# -----------------------------------------------------------------------------
+# Sentry Configuration
+# -----------------------------------------------------------------------------
+# Variables and secrets for Sentry error tracking integration
+
+resource "github_actions_variable" "sentry_enabled" {
+  for_each = local.deployment_repos
+
+  repository    = github_repository.repos[each.key].name
+  variable_name = "SENTRY_ENABLED"
+  value         = var.sentry_enabled ? "true" : "false"
+}
+
+resource "github_actions_secret" "sentry_dsn" {
+  for_each = var.sentry_dsn_configured ? local.deployment_repos : {}
+
+  repository      = github_repository.repos[each.key].name
+  secret_name     = "SENTRY_DSN"
+  plaintext_value = var.sentry_dsn
+}
+
+resource "github_actions_secret" "sentry_auth_token" {
+  for_each = var.sentry_auth_token_configured ? local.deployment_repos : {}
+
+  repository      = github_repository.repos[each.key].name
+  secret_name     = "SENTRY_AUTH_TOKEN"
+  plaintext_value = var.sentry_auth_token
+}

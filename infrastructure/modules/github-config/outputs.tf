@@ -58,6 +58,7 @@ output "variables_configured" {
     for name in keys(local.deployment_repos) : name => {
       DOMAIN             = var.domain_name
       CONTAINER_REGISTRY = var.container_registry
+      SENTRY_ENABLED     = var.sentry_enabled ? "true" : "false"
     }
   }
 }

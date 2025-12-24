@@ -52,6 +52,13 @@ inputs = {
   registry_user     = get_env("REGISTRY_USER", "")
   registry_password = get_env("REGISTRY_PASSWORD", "")
   
+  # Sentry Configuration
+  sentry_enabled              = true
+  sentry_dsn                  = get_env("SENTRY_DSN", "")
+  sentry_dsn_configured       = get_env("SENTRY_DSN", "") != ""
+  sentry_auth_token           = get_env("SENTRY_AUTH_TOKEN", "")
+  sentry_auth_token_configured = get_env("SENTRY_AUTH_TOKEN", "") != ""
+  
   # Repository configuration - same repos but focuses on dev environment
   repositories = {
     "Fundamental.Backend" = {
