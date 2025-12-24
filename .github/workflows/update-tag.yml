@@ -196,11 +196,11 @@ jobs:
           # Create commit message
           COMMIT_MSG="chore($ENV): Update $COMPONENT image tag to $TAG"
           COMMIT_BODY="Automated update triggered by CI/CD pipeline.
-
-Component: $COMPONENT
-Tag: $TAG
-Environment: $ENV
-Triggered by: ${{ github.event.sender.login }}"
+          
+          Component: $COMPONENT
+          Tag: $TAG
+          Environment: $ENV
+          Triggered by: ${{ github.event.sender.login }}"
           
           # Stage and commit
           git add "$VALUES_FILE"

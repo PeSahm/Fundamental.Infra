@@ -19,7 +19,7 @@
   vars:
     target_env: "dev"  # dev or prod
     confirm_prod: "no"
-    
+
     # Derived variables
     namespace: "fundamental-{{ target_env }}"
     release_name: "fundamental-{{ target_env }}"

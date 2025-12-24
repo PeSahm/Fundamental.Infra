@@ -54,11 +54,11 @@
               - resources-finalizer.argocd.argoproj.io
           spec:
             description: Fundamental Platform Project
-            
+
             sourceRepos:
               - '{{ git_repo_url }}'
               - 'https://charts.bitnami.com/bitnami'
-            
+
             destinations:
               - namespace: fundamental-dev
                 server: https://kubernetes.default.svc
@@ -66,7 +66,7 @@
                 server: https://kubernetes.default.svc
               - namespace: {{ argocd_namespace }}
                 server: https://kubernetes.default.svc
-            
+
             clusterResourceWhitelist:
               - group: ''
                 kind: Namespace
@@ -74,11 +74,11 @@
                 kind: Ingress
               - group: 'networking.k8s.io'
                 kind: IngressClass
-            
+
             namespaceResourceWhitelist:
               - group: '*'
                 kind: '*'
-            
+
             orphanedResources:
               warn: true
         dest: /tmp/argocd-project.yaml
@@ -104,7 +104,7 @@
               - resources-finalizer.argocd.argoproj.io
           spec:
             project: fundamental
-            
+
             source:
               repoURL: {{ git_repo_url }}
               targetRevision: {{ git_branch }}
@@ -113,11 +113,11 @@
                 valueFiles:
                   - values.yaml
                   - values-{{ item }}.yaml
-            
+
             destination:
               server: https://kubernetes.default.svc
               namespace: fundamental-{{ item }}
-            
+
             syncPolicy:
               automated:
                 prune: true
@@ -133,7 +133,7 @@
                   duration: 5s
                   factor: 2
                   maxDuration: 3m
-            
+
             ignoreDifferences:
               - group: apps
                 kind: Deployment

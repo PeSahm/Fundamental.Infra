@@ -107,7 +107,7 @@
       ansible.builtin.copy:
         content: |
           server = "https://{{ registry_domain }}"
-          
+
           [host."https://{{ registry_domain }}"]
             capabilities = ["pull", "resolve", "push"]
             # Trust the certificate (handled by cert-manager + ingress)
@@ -124,11 +124,11 @@
         content: |
           # Container Registry Credentials
           # Generated: {{ ansible_date_time.iso8601 }}
-          
+
           Registry URL:  https://{{ registry_domain }}
           Username:      {{ registry_username }}
           Password:      {{ registry_password }}
-          
+
           Docker Login:
             docker login {{ registry_domain }} -u {{ registry_username }} -p '{{ registry_password }}'
         dest: /root/.fundamental-credentials/registry-credentials.txt

@@ -12,24 +12,24 @@
 - name: Deploy Sentry Self-Hosted
   hosts: vps
   become: yes
-  
+
   vars:
     # Sentry configuration
     sentry_version: "24.11.1"
     sentry_domain: "sentry.academind.ir"
     sentry_namespace: "sentry"
-    
+
     # Admin credentials (should be in vault)
     sentry_admin_email: "{{ sentry_admin_email | default('admin@academind.ir') }}"
     sentry_admin_password: "{{ sentry_admin_password | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits')) }}"
-    
+
     # Secret key for Sentry (50+ chars)
     sentry_secret_key: "{{ sentry_secret_key | default(lookup('password', '/dev/null length=64 chars=ascii_letters,digits')) }}"
-    
+
     # Database credentials
     sentry_postgres_password: "{{ sentry_postgres_password | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits')) }}"
     sentry_redis_password: "{{ sentry_redis_password | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits')) }}"
-    
+
     # GitHub Integration (optional)
     sentry_github_enabled: true
     sentry_github_app_id: ""
@@ -37,7 +37,7 @@
     sentry_github_client_id: ""
     sentry_github_client_secret: ""
     sentry_github_webhook_secret: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
-    
+
     # Mail configuration
     sentry_mail_enabled: false
     sentry_mail_host: "smtp.gmail.com"
@@ -45,10 +45,10 @@
     sentry_mail_username: ""
     sentry_mail_password: ""
     sentry_mail_from: "sentry@academind.ir"
-    
+
     # Storage paths
     sentry_data_path: "/opt/sentry/data"
-    
+
   tasks:
     # =========================================================================
     # Prerequisites
@@ -57,7 +57,7 @@
       shell: |
         microk8s kubectl create namespace {{ sentry_namespace }} --dry-run=client -o yaml | microk8s kubectl apply -f -
       changed_when: false
-    
+
     - name: Create Sentry data directories
       file:
         path: "{{ item }}"
@@ -72,7 +72,7 @@
         - "{{ sentry_data_path }}/symbolicator"
         - "{{ sentry_data_path }}/files"
         - "{{ sentry_data_path }}/geoip"
-    
+
     # =========================================================================
     # Secrets
     # =========================================================================
@@ -103,7 +103,7 @@
         EOF
       changed_when: false
       no_log: true
-    
+
     # =========================================================================
     # ConfigMaps
     # =========================================================================
@@ -121,7 +121,7 @@
             # Sentry Configuration
             # =============================================================================
             import os
-            
+
             # =============================================================================
             # General
             # =============================================================================
@@ -130,10 +130,10 @@
             SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
             SESSION_COOKIE_SECURE = True
             CSRF_COOKIE_SECURE = True
-            
+
             # Secret key
             SECRET_KEY = os.environ.get("SENTRY_SECRET_KEY")
-            
+
             # =============================================================================
             # Database
             # =============================================================================
@@ -149,7 +149,7 @@
                     "CONN_HEALTH_CHECKS": True,
                 }
             }
-            
+
             # =============================================================================
             # Redis
             # =============================================================================
@@ -164,12 +164,12 @@
                     }
                 }
             }
-            
+
             # =============================================================================
             # Kafka
             # =============================================================================
             SENTRY_OPTIONS["kafka-common"] = {"bootstrap.servers": "sentry-kafka:9092"}
-            
+
             # =============================================================================
             # Feature Flags - Enable All Features
             # =============================================================================
@@ -179,54 +179,54 @@
                 "organizations:session-replay-ui": True,
                 "organizations:session-replay-sdk-errors-only": True,
                 "organizations:session-replay-combined-envelope-items": True,
-                
+
                 # Performance Monitoring
                 "organizations:performance-view": True,
                 "organizations:performance-span-histogram-view": True,
                 "organizations:performance-trace-details": True,
                 "organizations:performance-tracing-without-performance": True,
-                
+
                 # Profiling
                 "organizations:profiling": True,
                 "organizations:profiling-ui": True,
                 "organizations:profiling-global-suspect-functions": True,
-                
+
                 # Issue Platform
                 "organizations:issue-platform": True,
                 "organizations:issue-details-tag-page": True,
-                
+
                 # Metrics
                 "organizations:custom-metrics": True,
                 "organizations:metrics-extraction": True,
                 "organizations:ddm-ui": True,
-                
+
                 # Source Maps & Debug Files
                 "organizations:source-maps-cta": True,
                 "organizations:symbol-sources": True,
-                
+
                 # GitHub Integration
                 "organizations:integrations-stacktrace-link": True,
                 "organizations:integrations-codeowners": True,
-                
+
                 # Discover & Dashboards
                 "organizations:discover-basic": True,
                 "organizations:discover-query": True,
                 "organizations:dashboards-basic": True,
                 "organizations:dashboards-edit": True,
                 "organizations:dashboards-template": True,
-                
+
                 # Alerts
                 "organizations:incidents": True,
                 "organizations:metric-alert-threshold-period": True,
                 "organizations:alert-wizard-v3": True,
-                
+
                 # Other Features
                 "organizations:global-views": True,
                 "organizations:team-insights": True,
                 "organizations:project-detail": True,
                 "organizations:new-widget-builder-experience": True,
             }
-            
+
             # =============================================================================
             # Symbolicator (Source Maps & Debug Symbols)
             # =============================================================================
@@ -234,13 +234,13 @@
             SENTRY_OPTIONS["symbolicator.options"] = {
                 "url": "http://sentry-symbolicator:3021",
             }
-            
+
             # =============================================================================
             # Relay
             # =============================================================================
             SENTRY_RELAY_WHITELIST_PK = []
             SENTRY_RELAY_OPEN_REGISTRATION = True
-            
+
             {% if sentry_github_enabled and sentry_github_client_id %}
             # =============================================================================
             # GitHub Integration
@@ -249,7 +249,7 @@
             GITHUB_API_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
             GITHUB_REQUIRE_VERIFIED_EMAIL = False
             {% endif %}
-            
+
             {% if sentry_mail_enabled %}
             # =============================================================================
             # Mail Configuration
@@ -261,32 +261,32 @@
             SENTRY_OPTIONS["mail.use-tls"] = True
             SENTRY_OPTIONS["mail.from"] = "{{ sentry_mail_from }}"
             {% endif %}
-            
+
             # =============================================================================
             # Beacon (anonymous usage stats to Sentry)
             # =============================================================================
             SENTRY_BEACON = False
-          
+
           config.yml: |
             # =============================================================================
             # Sentry YAML Config
             # =============================================================================
             system.url-prefix: "https://{{ sentry_domain }}"
             system.internal-url-prefix: "http://sentry-web:9000"
-            
+
             # File storage
             filestore.backend: "filesystem"
             filestore.options:
               location: "/data/files"
-            
+
             # Enable all processing features
             relay.processing.enabled: true
             processing.verify-events: true
-            
+
             # ClickHouse for analytics
             snuba.host: "sentry-snuba-api"
             snuba.port: 1218
-          
+
           relay-config.yml: |
             # Relay configuration
             relay:
@@ -294,20 +294,20 @@
               upstream: "http://sentry-web:9000/"
               host: 0.0.0.0
               port: 3000
-            
+
             processing:
               enabled: true
               kafka_config:
                 - name: "bootstrap.servers"
                   value: "sentry-kafka:9092"
-            
+
             # Enable all processing
             limits:
               max_concurrent_requests: 100
               max_concurrent_queries: 50
         EOF
       changed_when: false
-    
+
     # =========================================================================
     # Persistent Volume Claims
     # =========================================================================
@@ -407,7 +407,7 @@
           storageClassName: microk8s-hostpath
         EOF
       changed_when: false
-    
+
     # =========================================================================
     # Deploy Sentry Stack
     # =========================================================================
@@ -417,7 +417,7 @@
         {{ lookup('template', 'sentry-deployment.yaml.j2') }}
         EOF
       changed_when: false
-    
+
     # =========================================================================
     # Wait for services
     # =========================================================================
@@ -427,14 +427,14 @@
       changed_when: false
       retries: 3
       delay: 10
-    
+
     - name: Wait for Redis to be ready
       shell: |
         microk8s kubectl wait --for=condition=ready pod -l app=sentry-redis -n {{ sentry_namespace }} --timeout=300s
       changed_when: false
       retries: 3
       delay: 10
-    
+
     # =========================================================================
     # Initialize Sentry
     # =========================================================================
@@ -451,7 +451,7 @@
           --command -- sentry upgrade --noinput
       changed_when: false
       ignore_errors: yes
-    
+
     - name: Create admin user
       shell: |
         microk8s kubectl run sentry-createuser --rm -it --restart=Never \
