@@ -151,6 +151,45 @@
       register: addon_result
       changed_when: "'is already enabled' not in addon_result.stdout"
 
+    - name: Hold MicroK8s snap auto-refresh
+      ansible.builtin.command: snap refresh --hold microk8s
+      changed_when: false
+
+    # =========================================
+    # MicroK8s Watchdog (Auto-Recovery)
+    # =========================================
+    - name: Copy MicroK8s watchdog script
+      ansible.builtin.copy:
+        src: ../files/microk8s-watchdog.sh
+        dest: /usr/local/bin/microk8s-watchdog.sh
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Copy MicroK8s watchdog systemd service
+      ansible.builtin.copy:
+        src: ../files/microk8s-watchdog.service
+        dest: /etc/systemd/system/microk8s-watchdog.service
+        mode: "0644"
+        owner: root
+        group: root
+      notify: Reload systemd
+
+    - name: Copy MicroK8s watchdog logrotate config
+      ansible.builtin.copy:
+        src: ../files/microk8s-watchdog.logrotate
+        dest: /etc/logrotate.d/microk8s-watchdog
+        mode: "0644"
+        owner: root
+        group: root
+
+    - name: Enable and start MicroK8s watchdog service
+      ansible.builtin.systemd:
+        name: microk8s-watchdog
+        state: started
+        enabled: true
+        daemon_reload: true
+
     - name: Create kubectl alias
       ansible.builtin.lineinfile:
         path: /root/.bashrc
@@ -191,3 +230,7 @@
       ansible.builtin.systemd:
         name: docker
         state: restarted
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

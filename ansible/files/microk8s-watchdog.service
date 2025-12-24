@@ -1,0 +1,16 @@
+[Unit]
+Description=MicroK8s Watchdog - Auto-recovery service
+Documentation=https://github.com/PeSahm/Fundamental.Infra
+After=snap.microk8s.daemon-kubelite.service
+Wants=snap.microk8s.daemon-kubelite.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/microk8s-watchdog.sh
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
