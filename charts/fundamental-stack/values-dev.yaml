@@ -14,22 +14,17 @@
 global:
   imagePullSecrets:
     - name: registry-credentials
-  
   domain: "dev.academind.ir"
   environment: "development"
-
 # =============================================================================
 # Backend (Development)
 # =============================================================================
 backend:
   replicaCount: 1
-  
   image:
     repository: registry.academind.ir/fundamental-backend
-    tag: "dev-latest"
-  
+    tag: "dev-20251224-f9914a1"
   aspnetEnvironment: "Development"
-  
   resources:
     limits:
       cpu: 500m
@@ -37,13 +32,10 @@ backend:
     requests:
       cpu: 100m
       memory: 256Mi
-  
   autoscaling:
     enabled: false
-  
   podDisruptionBudget:
     enabled: false
-  
   # Additional environment variables (must match template's .Values.backend.env)
   env:
     - name: ASPNETCORE_DETAILEDERRORS
@@ -58,23 +50,19 @@ backend:
           key: dsn
     - name: SENTRY_RELEASE
       value: "fundamental-backend@dev"
-  
   secrets:
     existingSecret: "fundamental-backend-secrets"
     keys:
       jwtSecret: "jwt-secret"
       apiKey: "api-key"
-
 # =============================================================================
 # Frontend (Development)
 # =============================================================================
 frontend:
   replicaCount: 1
-  
   image:
     repository: registry.academind.ir/fundamental-frontend
     tag: "dev-latest"
-  
   resources:
     limits:
       cpu: 100m
@@ -82,15 +70,11 @@ frontend:
     requests:
       cpu: 50m
       memory: 64Mi
-  
   autoscaling:
     enabled: false
-  
   podDisruptionBudget:
     enabled: false
-  
   apiBaseUrl: "/api"
-  
   # Sentry configuration for frontend
   # Note: Frontend DSN is typically baked at build time, but can be injected via env
   env:
@@ -101,17 +85,14 @@ frontend:
           key: frontend-dsn
     - name: SENTRY_RELEASE
       value: "fundamental-frontend@dev"
-
 # =============================================================================
 # Migrator (Development)
 # =============================================================================
 migrator:
   enabled: true
-  
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "dev-latest"
-  
+    tag: "dev-20251224-f9914a1"
   resources:
     limits:
       cpu: 300m
@@ -119,7 +100,6 @@ migrator:
     requests:
       cpu: 100m
       memory: 128Mi
-
 # =============================================================================
 # Ingress (Development) - Overrides base values.yaml
 # =============================================================================
@@ -129,7 +109,6 @@ migrator:
 ingress:
   enabled: true
   className: "public"
-  
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -138,7 +117,6 @@ ingress:
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-  
   hosts:
     - host: dev.academind.ir
       paths:
@@ -148,33 +126,27 @@ ingress:
         - path: /api
           pathType: Prefix
           service: backend
-  
   tls:
     - secretName: dev-academind-ir-tls
       hosts:
         - dev.academind.ir
-
 # =============================================================================
 # PostgreSQL (Development)
 # =============================================================================
 postgresql:
   enabled: true
-  
   image:
     repository: postgres
     tag: "17-alpine"
-  
   auth:
     existingSecret: "postgresql-credentials"
     secretKeys:
       usernameKey: "username"
       passwordKey: "password"
     database: "fundamental_dev"
-  
   persistence:
     enabled: true
     size: 5Gi
-  
   resources:
     limits:
       cpu: 300m
@@ -182,26 +154,21 @@ postgresql:
     requests:
       cpu: 50m
       memory: 128Mi
-
 # =============================================================================
 # Redis (Development)
 # =============================================================================
 redis:
   enabled: true
-  
   image:
     repository: redis
     tag: "7-alpine"
-  
   auth:
     enabled: true
     existingSecret: "redis-credentials"
     existingSecretPasswordKey: "password"
-  
   persistence:
     enabled: true
     size: 1Gi
-  
   resources:
     limits:
       cpu: 100m
@@ -209,7 +176,6 @@ redis:
     requests:
       cpu: 25m
       memory: 64Mi
-
 # =============================================================================
 # Network Policies (Development)
 # =============================================================================
@@ -218,7 +184,6 @@ networkPolicies:
   ingressNamespace: "ingress"
   ingressControllerLabels:
     name: nginx-ingress-microk8s
-
 # =============================================================================
 # Service Account (Development)
 # =============================================================================
