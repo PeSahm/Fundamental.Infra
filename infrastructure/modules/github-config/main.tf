@@ -239,3 +239,11 @@ resource "github_actions_secret" "sentry_auth_token" {
   secret_name     = "SENTRY_AUTH_TOKEN"
   plaintext_value = var.sentry_auth_token
 }
+
+resource "github_actions_variable" "sentry_upload_sourcemaps" {
+  for_each = local.deployment_repos
+
+  repository    = github_repository.repos[each.key].name
+  variable_name = "SENTRY_UPLOAD_SOURCEMAPS"
+  value         = var.sentry_upload_sourcemaps ? "true" : "false"
+}

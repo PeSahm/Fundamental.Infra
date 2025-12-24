@@ -104,6 +104,12 @@ variable "sentry_auth_token_configured" {
   default     = false
 }
 
+variable "sentry_upload_sourcemaps" {
+  description = "Enable Sentry source map uploads (requires sentry_auth_token)"
+  type        = bool
+  default     = false
+}
+
 # -----------------------------------------------------------------------------
 # Repository Configuration
 # -----------------------------------------------------------------------------
