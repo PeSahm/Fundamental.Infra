@@ -360,6 +360,10 @@ spec:
 # =============================================================================
 # Zookeeper (for Kafka)
 # =============================================================================
+# Zookeeper stores cluster state and coordinates Kafka brokers.
+# IMPORTANT: Both data and datalog directories must be persisted to prevent
+# cluster ID mismatch errors after restarts.
+# =============================================================================
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -371,6 +375,8 @@ metadata:
     app.kubernetes.io/part-of: sentry
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # Prevent multiple instances accessing same PVC
   selector:
     matchLabels:
       app: sentry-zookeeper
@@ -387,8 +393,38 @@ spec:
               value: "2181"
             - name: ZOOKEEPER_TICK_TIME
               value: "2000"
+            # Persist data and transaction logs to same PVC
+            - name: ZOOKEEPER_DATA_DIR
+              value: "/var/lib/zookeeper/data"
+            - name: ZOOKEEPER_DATA_LOG_DIR
+              value: "/var/lib/zookeeper/data/log"
+            # Snapshot retention (keep last 3)
+            - name: ZOOKEEPER_AUTOPURGE_SNAP_RETAIN_COUNT
+              value: "3"
+            - name: ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL
+              value: "24"
           ports:
             - containerPort: 2181
+              name: client
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "echo ruok | nc localhost 2181 | grep imok"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "echo ruok | nc localhost 2181 | grep imok"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
           volumeMounts:
             - name: zookeeper-data
               mountPath: /var/lib/zookeeper/data
@@ -419,6 +455,11 @@ spec:
 # =============================================================================
 # Kafka
 # =============================================================================
+# Kafka handles event streaming for Sentry.
+# IMPORTANT: The meta.properties file in the log directory stores the cluster ID.
+# If Zookeeper loses its data, Kafka will fail with InconsistentClusterIdException.
+# The watchdog service handles this by clearing meta.properties automatically.
+# =============================================================================
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -430,6 +471,8 @@ metadata:
     app.kubernetes.io/part-of: sentry
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # Prevent multiple instances accessing same PVC
   selector:
     matchLabels:
       app: sentry-kafka
@@ -438,6 +481,20 @@ spec:
       labels:
         app: sentry-kafka
     spec:
+      # Wait for Zookeeper to be available before starting Kafka
+      initContainers:
+        - name: wait-for-zookeeper
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Zookeeper..."
+              until nc -z sentry-zookeeper 2181; do
+                echo "Zookeeper not ready, waiting..."
+                sleep 5
+              done
+              echo "Zookeeper is ready!"
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.5.0
@@ -454,10 +511,38 @@ spec:
               value: "PLAINTEXT"
             - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
               value: "1"
+            # Log retention settings
             - name: KAFKA_LOG_RETENTION_HOURS
               value: "24"
+            - name: KAFKA_LOG_RETENTION_BYTES
+              value: "1073741824"  # 1GB per partition
+            - name: KAFKA_LOG_SEGMENT_BYTES
+              value: "268435456"   # 256MB segments
+            # Log directory (must match volume mount)
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+            # Graceful shutdown
+            - name: KAFKA_CONTROLLED_SHUTDOWN_ENABLE
+              value: "true"
+            - name: KAFKA_CONTROLLED_SHUTDOWN_MAX_RETRIES
+              value: "3"
           ports:
             - containerPort: 9092
+              name: kafka
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           volumeMounts:
             - name: kafka-data
               mountPath: /var/lib/kafka/data
@@ -468,6 +553,15 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+          # Graceful termination to allow controlled shutdown
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - "sleep 10"
+      terminationGracePeriodSeconds: 60
       volumes:
         - name: kafka-data
           persistentVolumeClaim:
