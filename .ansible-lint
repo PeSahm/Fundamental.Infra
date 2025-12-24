@@ -13,12 +13,19 @@ skip_list:
   - fqcn[action]
   # Shells that use pipes should set the pipefail option - acknowledged
   - risky-shell-pipe
+  # Commands should not change things if nothing needs doing
+  - no-changed-when
+  # Use failed_when and specify error conditions instead of using ignore_errors
+  - ignore-errors
+  # Variables names must not be Ansible reserved names
+  - var-naming[no-reserved]
 
 # Configure rules
 warn_list:
   - line-length
   - yaml[line-length]
   - yaml[comments-indentation]
+  - yaml[braces]
 
 # Enable verbose output
 verbosity: 0
