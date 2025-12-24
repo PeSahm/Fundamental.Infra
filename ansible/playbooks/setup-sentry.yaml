@@ -8,22 +8,22 @@
 - name: Deploy Sentry Self-Hosted
   hosts: vps
   become: yes
-  
+
   vars:
     sentry_namespace: "sentry"
     sentry_domain: "sentry.academind.ir"
     sentry_version: "24.11.1"
-    
+
     # Credentials (override with ansible-vault in production)
     sentry_admin_email: "admin@academind.ir"
     sentry_admin_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
     sentry_secret_key: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits') }}"
     sentry_postgres_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
     sentry_redis_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
-    
+
     # Storage
     sentry_storage_class: "microk8s-hostpath"
-    
+
   tasks:
     # =========================================================================
     # Create Namespace
@@ -39,7 +39,7 @@
             name: "{{ sentry_namespace }}"
             labels:
               app.kubernetes.io/name: sentry
-      
+
     # =========================================================================
     # Create Secrets
     # =========================================================================
@@ -60,7 +60,7 @@
             redis-password: "{{ sentry_redis_password }}"
             admin-email: "{{ sentry_admin_email }}"
             admin-password: "{{ sentry_admin_password }}"
-    
+
     # =========================================================================
     # Store credentials for later reference
     # =========================================================================
@@ -69,19 +69,19 @@
         content: |
           # Sentry Credentials
           # Generated: {{ ansible_date_time.iso8601 }}
-          
+
           Admin Email: {{ sentry_admin_email }}
           Admin Password: {{ sentry_admin_password }}
-          
+
           Secret Key: {{ sentry_secret_key }}
           PostgreSQL Password: {{ sentry_postgres_password }}
           Redis Password: {{ sentry_redis_password }}
-          
+
           URL: https://{{ sentry_domain }}
         dest: /root/.sentry-credentials
         mode: '0600'
       no_log: true
-    
+
     # =========================================================================
     # Create PVCs
     # =========================================================================
@@ -110,7 +110,7 @@
         - { name: zookeeper, size: "5Gi" }
         - { name: files, size: "20Gi" }
         - { name: symbolicator, size: "10Gi" }
-    
+
     # =========================================================================
     # Deploy Sentry Stack via Kustomize/Helm
     # =========================================================================
@@ -121,7 +121,7 @@
         EOF
       register: sentry_deploy
       changed_when: "'created' in sentry_deploy.stdout or 'configured' in sentry_deploy.stdout"
-    
+
     # =========================================================================
     # Wait for PostgreSQL
     # =========================================================================
@@ -137,7 +137,7 @@
           type: Ready
           status: "True"
         wait_timeout: 300
-    
+
     # =========================================================================
     # Wait for Redis
     # =========================================================================
@@ -153,7 +153,7 @@
           type: Ready
           status: "True"
         wait_timeout: 300
-    
+
     # =========================================================================
     # Run Sentry Migrations (init job)
     # =========================================================================
@@ -205,7 +205,7 @@
                   - name: sentry-config
                     configMap:
                       name: sentry-config
-    
+
     - name: Wait for migrations to complete
       kubernetes.core.k8s_info:
         kubeconfig: /var/snap/microk8s/current/credentials/client.config
@@ -217,7 +217,7 @@
       retries: 30
       delay: 20
       ignore_errors: yes
-    
+
     # =========================================================================
     # Create Admin User
     # =========================================================================
@@ -278,7 +278,7 @@
                     configMap:
                       name: sentry-config
       no_log: true
-    
+
     # =========================================================================
     # Print Summary
     # =========================================================================
@@ -288,13 +288,13 @@
           ============================================
           Sentry Deployment Complete!
           ============================================
-          
+
           URL: https://{{ sentry_domain }}
           Admin Email: {{ sentry_admin_email }}
           Admin Password: {{ sentry_admin_password }}
-          
+
           Credentials saved to: /root/.sentry-credentials
-          
+
           To create projects:
           1. Login to {{ sentry_domain }}
           2. Create organization: "fundamental"

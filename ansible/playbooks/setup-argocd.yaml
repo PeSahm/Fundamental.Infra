@@ -135,7 +135,7 @@
         content: |
           # ArgoCD Credentials
           # Generated: {{ ansible_date_time.iso8601 }}
-          
+
           URL:      https://{{ argocd_domain }}
           Username: admin
           Password: {{ argocd_password.stdout }}
