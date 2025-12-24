@@ -1,0 +1,184 @@
+---
+# Database Reset Playbook
+# =======================
+# Completely resets the PostgreSQL database for a given environment.
+# WARNING: This DELETES ALL DATA in the database!
+#
+# Usage:
+#   # Reset dev database
+#   ansible-playbook -i inventory/hosts.ini playbooks/reset-database.yaml -e "target_env=dev"
+#
+#   # Reset prod database (requires confirmation)
+#   ansible-playbook -i inventory/hosts.ini playbooks/reset-database.yaml -e "target_env=prod" -e "confirm_prod=yes"
+
+- name: Reset PostgreSQL Database
+  hosts: vps
+  become: true
+  gather_facts: false
+
+  vars:
+    target_env: "dev"  # dev or prod
+    confirm_prod: "no"
+    
+    # Derived variables
+    namespace: "fundamental-{{ target_env }}"
+    release_name: "fundamental-{{ target_env }}"
+
+  tasks:
+    # =========================================
+    # Safety Checks
+    # =========================================
+    - name: Verify target environment
+      ansible.builtin.assert:
+        that:
+          - target_env in ['dev', 'prod']
+        fail_msg: "target_env must be 'dev' or 'prod'"
+
+    - name: Require confirmation for production
+      when: target_env == 'prod'
+      ansible.builtin.assert:
+        that:
+          - confirm_prod == 'yes'
+        fail_msg: |
+          ⚠️  PRODUCTION DATABASE RESET REQUIRES CONFIRMATION!
+          Add: -e "confirm_prod=yes" to proceed.
+          This will DELETE ALL PRODUCTION DATA!
+
+    - name: Display warning
+      ansible.builtin.debug:
+        msg:
+          - "⚠️  WARNING: This will DELETE ALL DATA in {{ namespace }} database!"
+          - "Environment: {{ target_env }}"
+          - "Namespace: {{ namespace }}"
+          - ""
+          - "Proceeding in 5 seconds..."
+
+    - name: Pause before proceeding
+      ansible.builtin.pause:
+        seconds: 5
+
+    # =========================================
+    # Scale Down Backend
+    # =========================================
+    - name: Scale down backend deployment
+      ansible.builtin.shell: |
+        microk8s kubectl scale deployment {{ release_name }}-backend \
+          -n {{ namespace }} --replicas=0
+      register: scale_down
+      changed_when: true
+
+    - name: Wait for backend pods to terminate
+      ansible.builtin.shell: |
+        microk8s kubectl wait --for=delete pod \
+          -l app.kubernetes.io/component=backend \
+          -n {{ namespace }} \
+          --timeout=60s || true
+      changed_when: false
+
+    # =========================================
+    # Delete PostgreSQL Resources
+    # =========================================
+    - name: Delete PostgreSQL StatefulSet
+      ansible.builtin.shell: |
+        microk8s kubectl delete statefulset {{ release_name }}-postgresql \
+          -n {{ namespace }} \
+          --ignore-not-found=true
+      register: delete_sts
+      changed_when: "'deleted' in delete_sts.stdout"
+
+    - name: Wait for PostgreSQL pods to terminate
+      ansible.builtin.shell: |
+        microk8s kubectl wait --for=delete pod \
+          -l app.kubernetes.io/component=postgresql \
+          -n {{ namespace }} \
+          --timeout=120s || true
+      changed_when: false
+
+    - name: Delete PostgreSQL PVC (THIS DELETES ALL DATA!)
+      ansible.builtin.shell: |
+        microk8s kubectl delete pvc data-{{ release_name }}-postgresql-0 \
+          -n {{ namespace }} \
+          --ignore-not-found=true
+      register: delete_pvc
+      changed_when: "'deleted' in delete_pvc.stdout"
+
+    # =========================================
+    # Trigger ArgoCD Sync
+    # =========================================
+    - name: Force ArgoCD to sync and recreate resources
+      ansible.builtin.shell: |
+        microk8s kubectl annotate application {{ release_name }} \
+          -n argocd \
+          argocd.argoproj.io/refresh=hard \
+          --overwrite
+      register: argocd_refresh
+      changed_when: true
+
+    - name: Wait for ArgoCD to start syncing
+      ansible.builtin.pause:
+        seconds: 10
+
+    # =========================================
+    # Wait for PostgreSQL to be Ready
+    # =========================================
+    - name: Wait for PostgreSQL StatefulSet to be created
+      ansible.builtin.shell: |
+        for i in {1..30}; do
+          if microk8s kubectl get statefulset {{ release_name }}-postgresql -n {{ namespace }} 2>/dev/null; then
+            echo "StatefulSet found"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Timeout waiting for StatefulSet"
+        exit 1
+      register: wait_sts
+      changed_when: false
+
+    - name: Wait for PostgreSQL pod to be ready
+      ansible.builtin.shell: |
+        microk8s kubectl wait --for=condition=ready pod \
+          -l app.kubernetes.io/component=postgresql \
+          -n {{ namespace }} \
+          --timeout=180s
+      register: wait_pg
+      changed_when: false
+
+    # =========================================
+    # Scale Backend Back Up
+    # =========================================
+    - name: Scale backend deployment back up
+      ansible.builtin.shell: |
+        microk8s kubectl scale deployment {{ release_name }}-backend \
+          -n {{ namespace }} --replicas=1
+      register: scale_up
+      changed_when: true
+
+    - name: Wait for backend pod to be ready
+      ansible.builtin.shell: |
+        microk8s kubectl wait --for=condition=ready pod \
+          -l app.kubernetes.io/component=backend \
+          -n {{ namespace }} \
+          --timeout=180s
+      register: wait_backend
+      changed_when: false
+
+    # =========================================
+    # Verification
+    # =========================================
+    - name: Get pod status
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n {{ namespace }} -o wide
+      register: pod_status
+      changed_when: false
+
+    - name: Display final status
+      ansible.builtin.debug:
+        msg:
+          - "✅ Database reset complete for {{ namespace }}"
+          - ""
+          - "Pod Status:"
+          - "{{ pod_status.stdout_lines }}"
+          - ""
+          - "ℹ️  Migrations will run automatically when backend starts."
+          - "Check backend logs: microk8s kubectl logs -n {{ namespace }} -l app.kubernetes.io/component=backend"
