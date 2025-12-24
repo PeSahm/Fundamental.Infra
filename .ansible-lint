@@ -1,0 +1,30 @@
+# Ansible-lint configuration
+# See: https://ansible.readthedocs.io/projects/lint/configuring/
+
+# Exclude paths from linting
+exclude_paths:
+  - .github/
+  - tests/
+
+# Skip specific rules
+skip_list:
+  # Use FQCN for builtin module actions - disabled for now for cleaner code
+  - fqcn[action-core]
+  - fqcn[action]
+  # Shells that use pipes should set the pipefail option - acknowledged
+  - risky-shell-pipe
+
+# Configure rules
+warn_list:
+  - line-length
+  - yaml[line-length]
+  - yaml[comments-indentation]
+
+# Enable verbose output
+verbosity: 0
+
+# File extensions to lint
+kinds:
+  - playbook: "ansible/playbooks/*.yaml"
+  - tasks: "ansible/roles/*/tasks/*.yaml"
+  - handlers: "ansible/roles/*/handlers/*.yaml"
