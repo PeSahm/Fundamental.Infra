@@ -23,7 +23,7 @@ backend:
   replicaCount: 1
   image:
     repository: registry.academind.ir/fundamental-backend
-    tag: "dev-latest"
+    tag: "dev-20251226-69c87f3"
   aspnetEnvironment: "Development"
   resources:
     limits:
@@ -92,7 +92,7 @@ migrator:
   enabled: true
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "dev-latest"
+    tag: "dev-20251226-69c87f3"
   resources:
     limits:
       cpu: 300m
