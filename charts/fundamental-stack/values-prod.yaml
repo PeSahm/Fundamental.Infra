@@ -102,7 +102,7 @@ frontend:
           name: sentry-credentials
           key: frontend-dsn
     - name: SENTRY_RELEASE
-      value: "fundamental-frontend@prod"
+      value: "fundamental-angular-admin@prod"
 
 # =============================================================================
 # Migrator (Production)
