@@ -4,6 +4,7 @@
 # Complete deployment of Fundamental platform from scratch
 #
 # This playbook runs all setup steps in the correct order:
+# 0. Terraform (DNS, GitHub configuration) - runs on localhost
 # 1. VPS Setup (Docker, MicroK8s, UFW)
 # 2. Registry Proxy Setup
 # 3. Cert-Manager Setup (ClusterIssuers)
@@ -11,24 +12,27 @@
 # 5. ArgoCD Installation
 # 6. Kubernetes Dashboard
 # 7. Sentry Deployment
-# 8. Application Deployment (Backend, Frontend, Migrations via ArgoCD)
+# 8. GitHub Actions Runner (if token provided)
+# 9. Application Deployment (Backend, Frontend, Migrations via ArgoCD)
 #
-# Note: GitHub Actions Runner requires manual token, run separately:
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-github-runner.yaml \
-#     -e "github_runner_token=YOUR_TOKEN"
+# Prerequisites:
+#   cd /path/to/Fundamental.Infra
+#   source infrastructure/.env
 #
 # Usage:
-#   ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
+#   ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/full-deploy.yaml
 #
-# Or run individual playbooks:
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-vps.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-registry-proxy.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-cert-manager.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-kubernetes-secrets.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-argocd.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/setup-kubernetes-dashboard.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/deploy-sentry.yaml
-#   ansible-playbook -i inventory/hosts.ini playbooks/deploy-applications.yaml
+# With GitHub Runner (requires token from GitHub Settings > Actions > Runners > New):
+#   ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/full-deploy.yaml \
+#     -e "github_runner_token=YOUR_TOKEN"
+#
+# Variables:
+#   terraform_environment: dev (default) or prod
+#   deploy_branch: main (default) or develop
+#   github_runner_token: (optional) for self-hosted runner setup
+
+- name: "Step 0: Setup Terraform (DNS + GitHub)"
+  ansible.builtin.import_playbook: setup-terraform.yaml
 
 - name: "Step 1: Setup VPS Infrastructure"
   ansible.builtin.import_playbook: setup-vps.yaml
@@ -51,8 +55,13 @@
 - name: "Step 7: Deploy Sentry"
   ansible.builtin.import_playbook: deploy-sentry.yaml
 
-- name: "Step 8: Deploy Applications"
+- name: "Step 8: Setup GitHub Actions Runner (if token provided)"
+  ansible.builtin.import_playbook: setup-github-runner.yaml
+  when: github_runner_token is defined and github_runner_token != ''
+
+- name: "Step 9: Deploy Applications"
   ansible.builtin.import_playbook: deploy-applications.yaml
 
 # Final summary is displayed by deploy-applications.yaml
+
 

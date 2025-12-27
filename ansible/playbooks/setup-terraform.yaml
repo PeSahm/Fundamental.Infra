@@ -1,0 +1,159 @@
+---
+# Terraform Setup Playbook
+# ========================
+# Runs Terraform/Terragrunt to provision:
+# 1. DNS records (Cloudflare)
+# 2. GitHub configuration (secrets, variables, environments)
+#
+# Prerequisites:
+# - Terraform and Terragrunt installed on control machine
+# - Environment variables set (see infrastructure/.env.example)
+#
+# Usage:
+#   cd /path/to/Fundamental.Infra
+#   source infrastructure/.env
+#   ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/setup-terraform.yaml
+#
+# Variables:
+#   terraform_environment: dev (default) or prod
+#   terraform_auto_approve: true (default) or false for interactive mode
+
+- name: Setup Infrastructure with Terraform
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    terraform_environment: "{{ lookup('env', 'TERRAFORM_ENVIRONMENT') | default('dev', true) }}"
+    terraform_auto_approve: "{{ lookup('env', 'TERRAFORM_AUTO_APPROVE') | default('true', true) }}"
+    infra_root: "{{ playbook_dir }}/../../infrastructure"
+    
+    # Environment-specific paths
+    env_paths:
+      dev:
+        dns: "live/development/dns"
+        github: "live/development/github"
+        cloudflare_token_var: "CLOUDFLARE_API_TOKEN_DEV"
+      prod:
+        dns: "live/production/dns"
+        github: "live/production/github"
+        cloudflare_token_var: "CLOUDFLARE_API_TOKEN_PROD"
+
+  pre_tasks:
+    - name: Check required environment variables
+      ansible.builtin.fail:
+        msg: "{{ item }} environment variable is not set. Please source infrastructure/.env first."
+      when: lookup('env', item) == ''
+      loop:
+        - GITHUB_TOKEN
+        - "{{ env_paths[terraform_environment].cloudflare_token_var }}"
+
+    - name: Check Terragrunt is installed
+      ansible.builtin.command: which terragrunt
+      register: terragrunt_check
+      changed_when: false
+      failed_when: terragrunt_check.rc != 0
+
+    - name: Display Terraform environment
+      ansible.builtin.debug:
+        msg: |
+          Terraform Environment: {{ terraform_environment }}
+          Auto Approve: {{ terraform_auto_approve }}
+          DNS Path: {{ infra_root }}/{{ env_paths[terraform_environment].dns }}
+          GitHub Path: {{ infra_root }}/{{ env_paths[terraform_environment].github }}
+
+  tasks:
+    # =========================================
+    # Step 1: Apply DNS Configuration
+    # =========================================
+    - name: "Terraform DNS: Initialize"
+      ansible.builtin.command:
+        cmd: terragrunt init
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].dns }}"
+      environment:
+        CLOUDFLARE_API_TOKEN: "{{ lookup('env', env_paths[terraform_environment].cloudflare_token_var) }}"
+      register: dns_init
+      changed_when: "'Terraform has been successfully initialized' in dns_init.stdout"
+
+    - name: "Terraform DNS: Plan"
+      ansible.builtin.command:
+        cmd: terragrunt plan -out=tfplan -detailed-exitcode
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].dns }}"
+      environment:
+        CLOUDFLARE_API_TOKEN: "{{ lookup('env', env_paths[terraform_environment].cloudflare_token_var) }}"
+      register: dns_plan
+      changed_when: dns_plan.rc == 2
+      failed_when: dns_plan.rc not in [0, 2]
+
+    - name: "Terraform DNS: Apply"
+      ansible.builtin.command:
+        cmd: terragrunt apply tfplan
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].dns }}"
+      environment:
+        CLOUDFLARE_API_TOKEN: "{{ lookup('env', env_paths[terraform_environment].cloudflare_token_var) }}"
+      when: dns_plan.rc == 2 and terraform_auto_approve | bool
+      register: dns_apply
+
+    - name: "Terraform DNS: Display apply result"
+      ansible.builtin.debug:
+        msg: "{{ dns_apply.stdout_lines | default(['No changes to apply']) }}"
+      when: dns_plan.rc == 2
+
+    # =========================================
+    # Step 2: Apply GitHub Configuration
+    # =========================================
+    - name: "Terraform GitHub: Initialize"
+      ansible.builtin.command:
+        cmd: terragrunt init
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      register: github_init
+      changed_when: "'Terraform has been successfully initialized' in github_init.stdout"
+
+    - name: "Terraform GitHub: Import existing repositories"
+      ansible.builtin.command:
+        cmd: "terragrunt import '{{ item.resource }}' '{{ item.id }}'"
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      loop:
+        - { resource: 'github_repository.repos["Fundamental.Backend"]', id: 'Fundamental.Backend' }
+        - { resource: 'github_repository.repos["Fundamental.FrontEnd"]', id: 'Fundamental.FrontEnd' }
+        - { resource: 'github_repository.repos["Fundamental.Infra"]', id: 'Fundamental.Infra' }
+      register: github_import
+      changed_when: "'Import successful' in github_import.stdout"
+      failed_when: false  # Ignore errors if already imported
+
+    - name: "Terraform GitHub: Plan"
+      ansible.builtin.command:
+        cmd: terragrunt plan -out=tfplan -detailed-exitcode
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      register: github_plan
+      changed_when: github_plan.rc == 2
+      failed_when: github_plan.rc not in [0, 2]
+
+    - name: "Terraform GitHub: Apply"
+      ansible.builtin.command:
+        cmd: terragrunt apply tfplan
+        chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      when: github_plan.rc == 2 and terraform_auto_approve | bool
+      register: github_apply
+
+    - name: "Terraform GitHub: Display apply result"
+      ansible.builtin.debug:
+        msg: "{{ github_apply.stdout_lines | default(['No changes to apply']) }}"
+      when: github_plan.rc == 2
+
+  post_tasks:
+    - name: Display Terraform Summary
+      ansible.builtin.debug:
+        msg: |
+          ============================================
+          Terraform Setup Complete!
+          ============================================
+          Environment: {{ terraform_environment }}
+          
+          DNS Records: {{ 'Applied' if dns_plan.rc == 2 else 'No changes' }}
+          GitHub Config: {{ 'Applied' if github_plan.rc == 2 else 'No changes' }}
+          
+          Next Steps:
+          - Continue with VPS setup if not done
+          - Or run full-deploy.yaml for complete setup
+          ============================================
