@@ -59,6 +59,22 @@
     sentry_mail_password: ""
     sentry_mail_from: "sentry@academind.ir"
 
+    # Sentry organization and projects for CI/CD
+    sentry_org_slug: "fundamental"
+    sentry_org_name: "Fundamental"
+    sentry_projects:
+      - slug: "fundamental-backend"
+        name: "Fundamental Backend"
+        platform: "dotnet"
+        github_repo: "Fundamental.Backend"
+      - slug: "fundamental-angular-admin"
+        name: "Fundamental Angular Admin"
+        platform: "javascript-angular"
+        github_repo: "Fundamental.FrontEnd"
+
+    # GitHub configuration for updating secrets
+    github_owner: "{{ github_owner | default('PeSahm') }}"
+
     # Storage paths
     sentry_data_path: "/opt/sentry/data"
 
@@ -285,6 +301,101 @@
       no_log: true
 
     # =========================================================================
+    # Create Sentry Organization, Projects, and API Token
+    # =========================================================================
+    - name: Create Sentry organization and projects
+      shell: |
+        microk8s kubectl exec -n {{ sentry_namespace }} deploy/sentry-web -- sentry django shell -c "
+        from django.contrib.auth import get_user_model
+        from sentry.models.organization import Organization
+        from sentry.models.organizationmember import OrganizationMember
+        from sentry.models.project import Project
+        from sentry.models.team import Team
+        from sentry.models.projectkey import ProjectKey
+        from sentry.models.apitoken import ApiToken
+        import json
+
+        User = get_user_model()
+        user = User.objects.get(email='{{ sentry_admin_email }}')
+
+        # Create or get organization
+        org, org_created = Organization.objects.get_or_create(
+            slug='{{ sentry_org_slug }}',
+            defaults={'name': '{{ sentry_org_name }}'}
+        )
+        if org_created:
+            OrganizationMember.objects.create(organization=org, user=user, role='owner')
+            print(f'CREATED_ORG:{{ sentry_org_slug }}')
+        else:
+            print(f'EXISTS_ORG:{{ sentry_org_slug }}')
+
+        # Get or create default team
+        team, _ = Team.objects.get_or_create(
+            organization=org,
+            slug='default',
+            defaults={'name': 'Default Team'}
+        )
+
+        # Store DSNs for output
+        dsns = {}
+
+        # Create projects
+        {% for project in sentry_projects %}
+        proj_{{ loop.index }}, proj_{{ loop.index }}_created = Project.objects.get_or_create(
+            organization=org,
+            slug='{{ project.slug }}',
+            defaults={'name': '{{ project.name }}', 'platform': '{{ project.platform }}'}
+        )
+        if proj_{{ loop.index }}_created:
+            proj_{{ loop.index }}.add_team(team)
+            print(f'CREATED_PROJECT:{{ project.slug }}')
+        else:
+            print(f'EXISTS_PROJECT:{{ project.slug }}')
+        
+        key_{{ loop.index }} = ProjectKey.objects.filter(project=proj_{{ loop.index }}).first()
+        if key_{{ loop.index }}:
+            dsns['{{ project.github_repo }}'] = key_{{ loop.index }}.dsn_public
+            print(f'DSN_{{ project.github_repo }}:{key_{{ loop.index }}.dsn_public}')
+        {% endfor %}
+
+        # Create API token (always create new one for CI/CD)
+        token = ApiToken.objects.create(
+            user=user,
+            scope_list=['project:read', 'project:write', 'project:releases', 'org:read', 'org:write', 'event:read', 'event:write', 'member:read']
+        )
+        print(f'AUTH_TOKEN:{token.token}')
+        "
+      register: sentry_setup_result
+      changed_when: "'CREATED_' in sentry_setup_result.stdout"
+
+    - name: Parse Sentry setup output
+      set_fact:
+        sentry_auth_token: "{{ sentry_setup_result.stdout | regex_search('AUTH_TOKEN:([a-f0-9]+)', '\\1') | first }}"
+        sentry_dsns: "{{ sentry_setup_result.stdout | regex_findall('DSN_([^:]+):(.+)') | items2dict(key_name=0, value_name=1) }}"
+
+    - name: Debug Sentry credentials
+      debug:
+        msg: |
+          Auth Token: {{ sentry_auth_token[:20] }}...
+          DSNs: {{ sentry_dsns }}
+      when: sentry_auth_token is defined
+
+    # =========================================================================
+    # Update GitHub Secrets with Sentry credentials
+    # =========================================================================
+    - name: Update GitHub secrets for each project
+      shell: |
+        {% for project in sentry_projects %}
+        # Update {{ project.github_repo }}
+        echo "{{ sentry_auth_token }}" | gh secret set SENTRY_AUTH_TOKEN --repo {{ github_owner }}/{{ project.github_repo }}
+        echo "{{ sentry_dsns[project.github_repo] }}" | gh secret set SENTRY_DSN --repo {{ github_owner }}/{{ project.github_repo }}
+        {% endfor %}
+        echo "GitHub secrets updated successfully"
+      delegate_to: localhost
+      become: no
+      when: sentry_auth_token is defined and sentry_dsns | length > 0
+
+    # =========================================================================
     # Wait for Snuba API to be ready before running migrations
     # =========================================================================
     - name: Wait for Snuba API to be ready
@@ -336,23 +447,38 @@
         content: |
           # ================================================
           # Sentry Credentials - Generated by Ansible
+          # Generated: {{ ansible_date_time.iso8601 }}
           # ================================================
-          # URL: https://{{ sentry_domain }}
-          # 
+          
+          URL: https://{{ sentry_domain }}
+          Organization: {{ sentry_org_slug }}
+          
           # Admin Login:
-          #   Email: {{ sentry_admin_email }}
-          #   Password: {{ sentry_admin_password }}
-          #
+          Email: {{ sentry_admin_email }}
+          Password: {{ sentry_admin_password }}
+          
+          # API Token (for CI/CD):
+          Auth Token: {{ sentry_auth_token | default('NOT_GENERATED') }}
+          Scopes: project:read, project:write, project:releases, org:read, org:write, event:read, event:write, member:read
+          
+          # Project DSNs:
+          {% for project in sentry_projects %}
+          {{ project.name }} ({{ project.slug }}):
+            DSN: {{ sentry_dsns[project.github_repo] | default('NOT_GENERATED') }}
+            GitHub Repo: {{ github_owner }}/{{ project.github_repo }}
+          {% endfor %}
+          
           # Database (PostgreSQL):
-          #   Host: sentry-postgres.{{ sentry_namespace }}.svc.cluster.local
-          #   User: sentry
-          #   Password: {{ sentry_postgres_password }}
-          #
+          Host: sentry-postgres.{{ sentry_namespace }}.svc.cluster.local
+          User: sentry
+          Password: {{ sentry_postgres_password }}
+          
           # Redis:
-          #   Host: sentry-redis.{{ sentry_namespace }}.svc.cluster.local
-          #   Password: {{ sentry_redis_password }}
-          #
-          # Secret Key: {{ sentry_secret_key }}
+          Host: sentry-redis.{{ sentry_namespace }}.svc.cluster.local
+          Password: {{ sentry_redis_password }}
+          
+          # Secret Key:
+          {{ sentry_secret_key }}
           # ================================================
         dest: "{{ credentials_dir | default('/root/.fundamental-credentials') }}/sentry-credentials.txt"
         mode: "0600"
@@ -365,13 +491,26 @@
           ║                    SENTRY DEPLOYMENT COMPLETE                 ║
           ╠══════════════════════════════════════════════════════════════╣
           ║  URL: https://{{ sentry_domain }}
+          ║  Organization: {{ sentry_org_slug }}
           ║                                                              
           ║  Admin Login:                                                
           ║    Email:    {{ sentry_admin_email }}
           ║    Password: {{ sentry_admin_password }}
           ║                                                              
+          ║  API Token: {{ (sentry_auth_token | default(''))[:20] }}...
+          ║                                                              
+          {% for project in sentry_projects %}
+          ║  Project: {{ project.slug }}
+          ║    DSN: {{ (sentry_dsns[project.github_repo] | default('N/A'))[:50] }}...
+          {% endfor %}
+          ║                                                              
           ║  Credentials saved to:                                       
           ║    {{ credentials_dir | default('/root/.fundamental-credentials') }}/sentry-credentials.txt
+          ║                                                              
+          ║  GitHub secrets updated for:                                 
+          {% for project in sentry_projects %}
+          ║    - {{ github_owner }}/{{ project.github_repo }}
+          {% endfor %}
           ╚══════════════════════════════════════════════════════════════╝
 
   handlers:
