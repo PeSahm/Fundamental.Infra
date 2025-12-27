@@ -322,4 +322,61 @@ spec:
           port: 5432
     {{- end }}
 {{- end }}
+---
+{{/*
+=============================================================================
+8. ACME Solver Policy - Allow cert-manager HTTP-01 challenges
+=============================================================================
+cert-manager creates temporary pods for HTTP-01 ACME challenges.
+These pods need to be accessible from the ingress controller.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-acme-solver
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: acme-solver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+    - Egress
+  
+  ingress:
+    # Allow all ingress for ACME challenges
+    - {}
+  
+  egress:
+    # Allow all egress for ACME challenges
+    - {}
+---
+{{/*
+=============================================================================
+9. Ingress Namespace Access - Allow ingress controller to reach all pods
+=============================================================================
+Ensures the ingress controller can reach pods in this namespace.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-allow-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+    fundamental.io/policy-type: allow-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  
+  ingress:
+    # Allow traffic from ingress namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicies.ingressNamespace | default "ingress" }}
 {{- end }}
