@@ -1,0 +1,80 @@
+{{- if .Values.relay.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: relay-config
+  namespace: {{ .Values.namespace }}
+data:
+  config.yml: |
+    relay:
+      mode: {{ .Values.relay.mode | default "proxy" }}
+      upstream: "http://sentry-web.{{ .Values.namespace }}.svc.cluster.local:9000/"
+      host: 0.0.0.0
+      port: 3000
+    logging:
+      level: {{ .Values.relay.logLevel | default "INFO" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-relay
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: sentry-relay
+    app.kubernetes.io/name: sentry-relay
+    app.kubernetes.io/component: relay
+spec:
+  replicas: {{ .Values.relay.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: sentry-relay
+  template:
+    metadata:
+      labels:
+        app: sentry-relay
+        app.kubernetes.io/name: sentry-relay
+        app.kubernetes.io/component: relay
+    spec:
+      containers:
+      - name: relay
+        image: {{ .Values.relay.image.repository }}:{{ .Values.relay.image.tag }}
+        args: ["run"]
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - name: config
+          mountPath: /work/.relay
+        resources:
+          {{- toYaml .Values.relay.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /api/relay/healthcheck/live/
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/relay/healthcheck/ready/
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: relay-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-relay
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: sentry-relay
+spec:
+  selector:
+    app: sentry-relay
+  ports:
+  - port: 3000
+    targetPort: 3000
+{{- end }}

@@ -8,6 +8,9 @@
 # - Performance Monitoring
 # =============================================================================
 
+# Namespace for Sentry deployment
+namespace: sentry
+
 # Global settings
 global:
   # Storage class for all PVCs
@@ -236,10 +239,21 @@ cron:
 # Relay Service (Event ingestion)
 # =============================================================================
 relay:
-  replicaCount: 1
+  enabled: true
+  replicas: 1
   
   # Relay mode: managed, static, proxy
-  mode: "managed"
+  # proxy mode: Simple forwarding without processing (simplest)
+  # managed mode: Registers with Sentry upstream (requires credentials)
+  # static mode: Uses local configuration
+  mode: "proxy"
+  
+  # Log level: TRACE, DEBUG, INFO, WARN, ERROR
+  logLevel: "INFO"
+  
+  image:
+    repository: getsentry/relay
+    tag: "24.11.1"
   
   resources:
     requests:
