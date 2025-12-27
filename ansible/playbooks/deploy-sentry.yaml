@@ -118,208 +118,13 @@
       no_log: true
 
     # =========================================================================
-    # ConfigMaps
+    # NOTE: ConfigMap is defined in templates/sentry-deployment.yaml.j2
+    # It includes all necessary configurations for:
+    # - SECRET_KEY using SENTRY_OPTIONS (not deprecated SECRET_KEY)
+    # - Proper Redis, Kafka, Snuba configurations
+    # - CSRF and proxy settings
+    # - Disabled internal SDK
     # =========================================================================
-    - name: Create Sentry config
-      shell: |
-        cat <<'EOF' | microk8s kubectl apply -f -
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: sentry-config
-          namespace: {{ sentry_namespace }}
-        data:
-          sentry.conf.py: |
-            # =============================================================================
-            # Sentry Configuration
-            # =============================================================================
-            import os
-
-            # =============================================================================
-            # General
-            # =============================================================================
-            SENTRY_URL_PREFIX = "https://{{ sentry_domain }}"
-            CSRF_TRUSTED_ORIGINS = ["https://{{ sentry_domain }}"]
-            SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-            SESSION_COOKIE_SECURE = True
-            CSRF_COOKIE_SECURE = True
-
-            # Secret key
-            SECRET_KEY = os.environ.get("SENTRY_SECRET_KEY")
-
-            # =============================================================================
-            # Database
-            # =============================================================================
-            DATABASES = {
-                "default": {
-                    "ENGINE": "sentry.db.postgres",
-                    "NAME": "sentry",
-                    "USER": "sentry",
-                    "PASSWORD": os.environ.get("POSTGRES_PASSWORD"),
-                    "HOST": "sentry-postgres",
-                    "PORT": "5432",
-                    "CONN_MAX_AGE": 600,
-                    "CONN_HEALTH_CHECKS": True,
-                }
-            }
-
-            # =============================================================================
-            # Redis
-            # =============================================================================
-            SENTRY_OPTIONS["redis.clusters"] = {
-                "default": {
-                    "hosts": {
-                        0: {
-                            "host": "sentry-redis",
-                            "port": 6379,
-                            "password": os.environ.get("REDIS_PASSWORD"),
-                        }
-                    }
-                }
-            }
-
-            # =============================================================================
-            # Kafka
-            # =============================================================================
-            SENTRY_OPTIONS["kafka-common"] = {"bootstrap.servers": "sentry-kafka:9092"}
-
-            # =============================================================================
-            # Feature Flags - Enable All Features
-            # =============================================================================
-            SENTRY_FEATURES = {
-                # Session Replay
-                "organizations:session-replay": True,
-                "organizations:session-replay-ui": True,
-                "organizations:session-replay-sdk-errors-only": True,
-                "organizations:session-replay-combined-envelope-items": True,
-
-                # Performance Monitoring
-                "organizations:performance-view": True,
-                "organizations:performance-span-histogram-view": True,
-                "organizations:performance-trace-details": True,
-                "organizations:performance-tracing-without-performance": True,
-
-                # Profiling
-                "organizations:profiling": True,
-                "organizations:profiling-ui": True,
-                "organizations:profiling-global-suspect-functions": True,
-
-                # Issue Platform
-                "organizations:issue-platform": True,
-                "organizations:issue-details-tag-page": True,
-
-                # Metrics
-                "organizations:custom-metrics": True,
-                "organizations:metrics-extraction": True,
-                "organizations:ddm-ui": True,
-
-                # Source Maps & Debug Files
-                "organizations:source-maps-cta": True,
-                "organizations:symbol-sources": True,
-
-                # GitHub Integration
-                "organizations:integrations-stacktrace-link": True,
-                "organizations:integrations-codeowners": True,
-
-                # Discover & Dashboards
-                "organizations:discover-basic": True,
-                "organizations:discover-query": True,
-                "organizations:dashboards-basic": True,
-                "organizations:dashboards-edit": True,
-                "organizations:dashboards-template": True,
-
-                # Alerts
-                "organizations:incidents": True,
-                "organizations:metric-alert-threshold-period": True,
-                "organizations:alert-wizard-v3": True,
-
-                # Other Features
-                "organizations:global-views": True,
-                "organizations:team-insights": True,
-                "organizations:project-detail": True,
-                "organizations:new-widget-builder-experience": True,
-            }
-
-            # =============================================================================
-            # Symbolicator (Source Maps & Debug Symbols)
-            # =============================================================================
-            SENTRY_OPTIONS["symbolicator.enabled"] = True
-            SENTRY_OPTIONS["symbolicator.options"] = {
-                "url": "http://sentry-symbolicator:3021",
-            }
-
-            # =============================================================================
-            # Relay
-            # =============================================================================
-            SENTRY_RELAY_WHITELIST_PK = []
-            SENTRY_RELAY_OPEN_REGISTRATION = True
-
-            {% if sentry_github_enabled and sentry_github_client_id %}
-            # =============================================================================
-            # GitHub Integration
-            # =============================================================================
-            GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
-            GITHUB_API_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
-            GITHUB_REQUIRE_VERIFIED_EMAIL = False
-            {% endif %}
-
-            {% if sentry_mail_enabled %}
-            # =============================================================================
-            # Mail Configuration
-            # =============================================================================
-            SENTRY_OPTIONS["mail.host"] = "{{ sentry_mail_host }}"
-            SENTRY_OPTIONS["mail.port"] = {{ sentry_mail_port }}
-            SENTRY_OPTIONS["mail.username"] = "{{ sentry_mail_username }}"
-            SENTRY_OPTIONS["mail.password"] = os.environ.get("MAIL_PASSWORD", "")
-            SENTRY_OPTIONS["mail.use-tls"] = True
-            SENTRY_OPTIONS["mail.from"] = "{{ sentry_mail_from }}"
-            {% endif %}
-
-            # =============================================================================
-            # Beacon (anonymous usage stats to Sentry)
-            # =============================================================================
-            SENTRY_BEACON = False
-
-          config.yml: |
-            # =============================================================================
-            # Sentry YAML Config
-            # =============================================================================
-            system.url-prefix: "https://{{ sentry_domain }}"
-            system.internal-url-prefix: "http://sentry-web:9000"
-
-            # File storage
-            filestore.backend: "filesystem"
-            filestore.options:
-              location: "/data/files"
-
-            # Enable all processing features
-            relay.processing.enabled: true
-            processing.verify-events: true
-
-            # ClickHouse for analytics
-            snuba.host: "sentry-snuba-api"
-            snuba.port: 1218
-
-          relay-config.yml: |
-            # Relay configuration
-            relay:
-              mode: managed
-              upstream: "http://sentry-web:9000/"
-              host: 0.0.0.0
-              port: 3000
-
-            processing:
-              enabled: true
-              kafka_config:
-                - name: "bootstrap.servers"
-                  value: "sentry-kafka:9092"
-
-            # Enable all processing
-            limits:
-              max_concurrent_requests: 100
-              max_concurrent_queries: 50
-        EOF
-      changed_when: false
 
     # =========================================================================
     # Persistent Volume Claims
@@ -448,35 +253,126 @@
       retries: 3
       delay: 10
 
-    # =========================================================================
-    # Initialize Sentry
-    # =========================================================================
-    - name: Run Sentry migrations
+    - name: Wait for Kafka to be ready
       shell: |
-        microk8s kubectl run sentry-init --rm -it --restart=Never \
-          --image=getsentry/sentry:{{ sentry_version }} \
-          --namespace={{ sentry_namespace }} \
-          --env="SENTRY_SECRET_KEY={{ sentry_secret_key }}" \
-          --env="POSTGRES_PASSWORD={{ sentry_postgres_password }}" \
-          --env="REDIS_PASSWORD={{ sentry_redis_password }}" \
-          --env="SENTRY_POSTGRES_HOST=sentry-postgres" \
-          --env="SENTRY_REDIS_HOST=sentry-redis" \
-          --command -- sentry upgrade --noinput
+        microk8s kubectl wait --for=condition=ready pod -l app=sentry-kafka -n {{ sentry_namespace }} --timeout=300s
       changed_when: false
+      retries: 5
+      delay: 30
+
+    - name: Wait for Sentry web pod to be ready (needs it for migrations)
+      shell: |
+        microk8s kubectl wait --for=condition=ready pod -l app=sentry-web -n {{ sentry_namespace }} --timeout=300s
+      changed_when: false
+      retries: 5
+      delay: 30
+
+    # =========================================================================
+    # Initialize Sentry Database
+    # =========================================================================
+    - name: Run Sentry database migrations
+      shell: |
+        microk8s kubectl exec -n {{ sentry_namespace }} deploy/sentry-web -- sentry upgrade --noinput 2>&1 || true
+      changed_when: false
+      retries: 3
+      delay: 30
       ignore_errors: yes
 
     - name: Create admin user
       shell: |
-        microk8s kubectl run sentry-createuser --rm -it --restart=Never \
-          --image=getsentry/sentry:{{ sentry_version }} \
-          --namespace={{ sentry_namespace }} \
-          --env="SENTRY_SECRET_KEY={{ sentry_secret_key }}" \
-          --env="POSTGRES_PASSWORD={{ sentry_postgres_password }}" \
-          --env="SENTRY_POSTGRES_HOST=sentry-postgres" \
-          --command -- sentry createuser --email {{ sentry_admin_email }} --password {{ sentry_admin_password }} --superuser --no-input
+        microk8s kubectl exec -n {{ sentry_namespace }} deploy/sentry-web -- sentry createuser --email {{ sentry_admin_email }} --password {{ sentry_admin_password }} --superuser --no-input 2>&1 || true
       changed_when: false
-      ignore_errors: yes
       no_log: true
+
+    # =========================================================================
+    # Wait for Snuba API to be ready before running migrations
+    # =========================================================================
+    - name: Wait for Snuba API to be ready
+      shell: |
+        microk8s kubectl wait --for=condition=ready pod -l app=sentry-snuba-api -n {{ sentry_namespace }} --timeout=300s
+      changed_when: false
+      retries: 5
+      delay: 30
+
+    - name: Wait for ClickHouse to be ready
+      shell: |
+        microk8s kubectl wait --for=condition=ready pod -l app=sentry-clickhouse -n {{ sentry_namespace }} --timeout=300s
+      changed_when: false
+      retries: 5
+      delay: 30
+
+    # =========================================================================
+    # Run Snuba migrations to create ClickHouse tables
+    # This is required for organization volume metrics and event processing
+    # =========================================================================
+    - name: Run Snuba migrations
+      shell: |
+        microk8s kubectl exec -n {{ sentry_namespace }} deploy/sentry-snuba-api -- snuba migrations migrate --force 2>&1 || true
+      changed_when: false
+      retries: 3
+      delay: 30
+      ignore_errors: yes
+
+    # =========================================================================
+    # Restart services to pick up all configurations
+    # =========================================================================
+    - name: Restart Sentry web and workers after migrations
+      shell: |
+        microk8s kubectl rollout restart deployment/sentry-web deployment/sentry-worker deployment/sentry-cron -n {{ sentry_namespace }}
+      changed_when: false
+
+    - name: Wait for Sentry web to be ready
+      shell: |
+        microk8s kubectl wait --for=condition=ready pod -l app=sentry-web -n {{ sentry_namespace }} --timeout=300s
+      changed_when: false
+      retries: 3
+      delay: 10
+
+    # =========================================================================
+    # Save and Display Credentials
+    # =========================================================================
+    - name: Save Sentry credentials to file
+      copy:
+        content: |
+          # ================================================
+          # Sentry Credentials - Generated by Ansible
+          # ================================================
+          # URL: https://{{ sentry_domain }}
+          # 
+          # Admin Login:
+          #   Email: {{ sentry_admin_email }}
+          #   Password: {{ sentry_admin_password }}
+          #
+          # Database (PostgreSQL):
+          #   Host: sentry-postgres.{{ sentry_namespace }}.svc.cluster.local
+          #   User: sentry
+          #   Password: {{ sentry_postgres_password }}
+          #
+          # Redis:
+          #   Host: sentry-redis.{{ sentry_namespace }}.svc.cluster.local
+          #   Password: {{ sentry_redis_password }}
+          #
+          # Secret Key: {{ sentry_secret_key }}
+          # ================================================
+        dest: "{{ credentials_dir | default('/root/.fundamental-credentials') }}/sentry-credentials.txt"
+        mode: "0600"
+
+    - name: Display Sentry credentials
+      debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════════╗
+          ║                    SENTRY DEPLOYMENT COMPLETE                 ║
+          ╠══════════════════════════════════════════════════════════════╣
+          ║  URL: https://{{ sentry_domain }}
+          ║                                                              
+          ║  Admin Login:                                                
+          ║    Email:    {{ sentry_admin_email }}
+          ║    Password: {{ sentry_admin_password }}
+          ║                                                              
+          ║  Credentials saved to:                                       
+          ║    {{ credentials_dir | default('/root/.fundamental-credentials') }}/sentry-credentials.txt
+          ╚══════════════════════════════════════════════════════════════╝
 
   handlers:
     - name: Restart Sentry services
