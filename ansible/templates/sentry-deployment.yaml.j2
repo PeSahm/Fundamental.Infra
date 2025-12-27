@@ -21,6 +21,12 @@ data:
     from sentry.conf.server import *  # noqa
     
     # =============================================================================
+    # Secret Key (Required for Django)
+    # =============================================================================
+    SECRET_KEY = os.environ.get("SENTRY_SECRET_KEY", "")
+    SENTRY_OPTIONS["system.secret-key"] = SECRET_KEY
+    
+    # =============================================================================
     # Database
     # =============================================================================
     DATABASES = {
@@ -403,6 +409,9 @@ spec:
               value: "3"
             - name: ZOOKEEPER_AUTOPURGE_PURGE_INTERVAL
               value: "24"
+            # Enable 4-letter word commands for health checks (ruok)
+            - name: KAFKA_OPTS
+              value: "-Dzookeeper.4lw.commands.whitelist=*"
           ports:
             - containerPort: 2181
               name: client
@@ -901,6 +910,10 @@ spec:
               value: "http://sentry-web:9000/"
             - name: RELAY_MODE
               value: "proxy"
+            - name: RELAY_HOST
+              value: "0.0.0.0"
+            - name: RELAY_PORT
+              value: "3000"
           ports:
             - containerPort: 3000
           resources:
@@ -1107,10 +1120,10 @@ spec:
           resources:
             requests:
               cpu: 200m
-              memory: 512Mi
+              memory: 1Gi
             limits:
               cpu: 1000m
-              memory: 1Gi
+              memory: 2Gi
       volumes:
         - name: sentry-files
           persistentVolumeClaim:
