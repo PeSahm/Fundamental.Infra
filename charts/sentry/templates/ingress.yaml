@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sentry-ingress
+  namespace: {{ .Values.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    {{- if .Values.ingress.cors.enabled }}
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "{{ .Values.ingress.cors.allowOrigins | join ", " }}"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-Sentry-Auth,sentry-trace,baggage"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | default "public" }}
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      {{- if .Values.relay.enabled }}
+      # Route SDK ingestion endpoints to Relay
+      - path: /api/
+        pathType: Prefix
+        backend:
+          service:
+            name: sentry-relay
+            port:
+              number: 3000
+      {{- end }}
+      # Route web UI to sentry-web
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sentry-web
+            port:
+              number: 9000
+  tls:
+  - hosts:
+    - {{ .Values.ingress.host }}
+    secretName: {{ .Values.ingress.tlsSecretName | default "sentry-tls" }}

@@ -57,6 +57,10 @@ sentry:
     url: "https://sentry.academind.ir"
     # Admin email
     adminEmail: "admin@academind.ir"
+    # Support email (defaults to adminEmail if not set)
+    supportEmail: "mostafa.esmaeili8@gmail.com"
+    # Security email (defaults to adminEmail if not set)
+    securityEmail: "mostafa.esmaeili8@gmail.com"
     # Internal IPs that can access system endpoints
     internalIps: []
 
@@ -442,6 +446,22 @@ serviceAccount:
   create: true
   name: "sentry"
   annotations: {}
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  host: "sentry.academind.ir"
+  className: "public"
+  tlsSecretName: "sentry-tls"
+  cors:
+    enabled: true
+    # Origins allowed to send events to Sentry (your frontend domains)
+    allowOrigins:
+      - "https://sentry.academind.ir"
+      - "https://dev.academind.ir"
+      - "https://academind.ir"
+      - "https://www.academind.ir"
 
 # =============================================================================
 # Init Jobs
