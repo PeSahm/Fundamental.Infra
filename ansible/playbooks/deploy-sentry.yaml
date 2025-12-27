@@ -324,10 +324,20 @@
             defaults={'name': '{{ sentry_org_name }}'}
         )
         if org_created:
-            OrganizationMember.objects.create(organization=org, user=user, role='owner')
             print(f'CREATED_ORG:{{ sentry_org_slug }}')
         else:
             print(f'EXISTS_ORG:{{ sentry_org_slug }}')
+
+        # Ensure admin user is a member of the org (using user_id, not user)
+        membership, mem_created = OrganizationMember.objects.get_or_create(
+            organization=org,
+            user_id=user.id,
+            defaults={'role': 'owner'}
+        )
+        if mem_created:
+            print(f'ADDED_MEMBER:{user.email}')
+        else:
+            print(f'EXISTS_MEMBER:{user.email}')
 
         # Get or create default team
         team, _ = Team.objects.get_or_create(
