@@ -1,0 +1,161 @@
+---
+# GitHub Actions Self-Hosted Runner Setup
+# ========================================
+# Installs and configures a self-hosted GitHub Actions runner
+#
+# Prerequisites:
+#   - VPS with root access
+#   - GitHub PAT with admin:org scope or repo scope
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-github-runner.yaml \
+#     -e "github_runner_token=YOUR_REGISTRATION_TOKEN"
+#
+# To get a registration token:
+#   1. Go to GitHub Settings > Actions > Runners
+#   2. Click "New self-hosted runner"
+#   3. Copy the token from the configuration command
+
+- name: Setup GitHub Actions Self-Hosted Runner
+  hosts: vps
+  become: true
+  gather_facts: true
+
+  vars:
+    # Runner configuration
+    runner_version: "2.321.0"
+    runner_user: "root"
+    runner_home: "/root/actions-runner"
+    runner_name: "{{ inventory_hostname }}"
+    runner_labels: "self-hosted,Linux,X64,iran"
+    
+    # GitHub configuration - should be provided via extra vars or vault
+    github_owner: "PeSahm"
+    # github_runner_token: "" # Must be provided via -e flag or vault
+    
+    # Runner package URL
+    runner_package_url: "https://github.com/actions/runner/releases/download/v{{ runner_version }}/actions-runner-linux-x64-{{ runner_version }}.tar.gz"
+    
+  tasks:
+    # =========================================
+    # Prerequisites
+    # =========================================
+    - name: Validate runner token is provided
+      ansible.builtin.fail:
+        msg: "github_runner_token must be provided via -e flag"
+      when: github_runner_token is not defined or github_runner_token == ""
+
+    - name: Install runner dependencies
+      ansible.builtin.apt:
+        name:
+          - curl
+          - jq
+          - libicu-dev
+          - libkrb5-3
+          - zlib1g
+        state: present
+        update_cache: true
+
+    # =========================================
+    # Download and Extract Runner
+    # =========================================
+    - name: Create runner directory
+      ansible.builtin.file:
+        path: "{{ runner_home }}"
+        state: directory
+        owner: "{{ runner_user }}"
+        mode: "0755"
+
+    - name: Check if runner is already installed
+      ansible.builtin.stat:
+        path: "{{ runner_home }}/config.sh"
+      register: runner_installed
+
+    - name: Download runner package
+      ansible.builtin.get_url:
+        url: "{{ runner_package_url }}"
+        dest: "/tmp/actions-runner.tar.gz"
+        mode: "0644"
+      when: not runner_installed.stat.exists
+
+    - name: Extract runner package
+      ansible.builtin.unarchive:
+        src: "/tmp/actions-runner.tar.gz"
+        dest: "{{ runner_home }}"
+        remote_src: true
+        owner: "{{ runner_user }}"
+      when: not runner_installed.stat.exists
+
+    - name: Clean up downloaded package
+      ansible.builtin.file:
+        path: "/tmp/actions-runner.tar.gz"
+        state: absent
+
+    # =========================================
+    # Configure Runner
+    # =========================================
+    - name: Check if runner is already configured
+      ansible.builtin.stat:
+        path: "{{ runner_home }}/.runner"
+      register: runner_configured
+
+    - name: Configure runner (organization level)
+      ansible.builtin.command:
+        cmd: >
+          ./config.sh --url https://github.com/{{ github_owner }}
+          --token {{ github_runner_token }}
+          --name {{ runner_name }}
+          --labels {{ runner_labels }}
+          --unattended
+          --replace
+        chdir: "{{ runner_home }}"
+      become_user: "{{ runner_user }}"
+      when: not runner_configured.stat.exists
+      no_log: true  # Hide token from logs
+
+    # =========================================
+    # Install as Service
+    # =========================================
+    - name: Check if runner service exists
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/actions.runner.{{ github_owner }}.{{ runner_name }}.service"
+      register: runner_service_exists
+
+    - name: Install runner service
+      ansible.builtin.command:
+        cmd: ./svc.sh install {{ runner_user }}
+        chdir: "{{ runner_home }}"
+      when: not runner_service_exists.stat.exists
+
+    - name: Start runner service
+      ansible.builtin.command:
+        cmd: ./svc.sh start
+        chdir: "{{ runner_home }}"
+      register: svc_start
+      changed_when: "'started' in svc_start.stdout"
+      failed_when: false
+
+    - name: Ensure runner service is enabled
+      ansible.builtin.systemd:
+        name: "actions.runner.{{ github_owner }}.{{ runner_name }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # =========================================
+    # Verification
+    # =========================================
+    - name: Check runner service status
+      ansible.builtin.command: ./svc.sh status
+      args:
+        chdir: "{{ runner_home }}"
+      register: runner_status
+      changed_when: false
+
+    - name: Display runner status
+      ansible.builtin.debug:
+        msg:
+          - "GitHub Actions Runner installed at: {{ runner_home }}"
+          - "Runner name: {{ runner_name }}"
+          - "Runner labels: {{ runner_labels }}"
+          - "Service status: {{ runner_status.stdout }}"

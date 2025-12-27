@@ -158,7 +158,7 @@ data:
     # =============================================================================
     # CSRF Configuration (required when behind reverse proxy/ingress)
     # =============================================================================
-    CSRF_TRUSTED_ORIGINS = ["https://{{ sentry_domain }}"]
+    CSRF_TRUSTED_ORIGINS = {{ sentry_csrf_trusted_origins | default(['https://' + sentry_domain]) | to_json }}
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
     
@@ -870,72 +870,71 @@ spec:
       targetPort: 8085
 
 # =============================================================================
-# Relay (Event Ingestion) - DISABLED
-# Relay requires additional configuration for Kafka.
-# For basic setups, events can be sent directly to sentry-web.
-# To enable relay in production for better performance:
-# 1. Configure kafka_config in relay-config.yml
-# 2. Uncomment the relay deployment and service below
-# 3. Update ingress to route /api/ to sentry-relay
+# Relay (Event Ingestion)
+# Required for Sentry 24.x+ to receive SDK events without CSRF issues
 # =============================================================================
-# ---
-# apiVersion: apps/v1
-# kind: Deployment
-# metadata:
-#   name: sentry-relay
-#   namespace: {{ sentry_namespace }}
-#   labels:
-#     app: sentry-relay
-#     app.kubernetes.io/part-of: sentry
-# spec:
-#   replicas: 1
-#   selector:
-#     matchLabels:
-#       app: sentry-relay
-#   template:
-#     metadata:
-#       labels:
-#         app: sentry-relay
-#     spec:
-#       containers:
-#         - name: relay
-#           image: getsentry/relay:{{ sentry_version }}
-#           env:
-#             - name: RELAY_UPSTREAM__URL
-#               value: "http://sentry-web:9000/"
-#             - name: RELAY_MODE
-#               value: "managed"
-#           ports:
-#             - containerPort: 3000
-#           resources:
-#             requests:
-#               cpu: 100m
-#               memory: 256Mi
-#             limits:
-#               cpu: 500m
-#               memory: 512Mi
-#           volumeMounts:
-#             - name: relay-config
-#               mountPath: /work/.relay
-#       volumes:
-#         - name: relay-config
-#           configMap:
-#             name: sentry-config
-#             items:
-#               - key: relay-config.yml
-#                 path: config.yml
-# ---
-# apiVersion: v1
-# kind: Service
-# metadata:
-#   name: sentry-relay
-#   namespace: {{ sentry_namespace }}
-# spec:
-#   selector:
-#     app: sentry-relay
-#   ports:
-#     - port: 3000
-#       targetPort: 3000
+{% if sentry_relay_enabled | default(true) %}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-relay
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-relay
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-relay
+  template:
+    metadata:
+      labels:
+        app: sentry-relay
+    spec:
+      containers:
+        - name: relay
+          image: getsentry/relay:{{ sentry_version }}
+          env:
+            - name: RELAY_UPSTREAM__URL
+              value: "http://sentry-web:9000/"
+            - name: RELAY_MODE
+              value: "proxy"
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/relay/healthcheck/live/
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/relay/healthcheck/ready/
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentry-relay
+  namespace: {{ sentry_namespace }}
+spec:
+  selector:
+    app: sentry-relay
+  ports:
+    - port: 3000
+      targetPort: 3000
+{% endif %}
 
 # =============================================================================
 # Sentry Web (Main Application)
@@ -1254,6 +1253,13 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+{% if sentry_relay_enabled | default(true) %}
+    # CORS headers for SDK event submission
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Range,Range,X-Sentry-Auth,Authorization,sentry-trace,baggage"
+{% endif %}
 spec:
   ingressClassName: public
   tls:
@@ -1264,8 +1270,17 @@ spec:
     - host: {{ sentry_domain }}
       http:
         paths:
-          # Route all traffic to sentry-web
-          # Relay is optional and can be enabled later for high-volume event ingestion
+{% if sentry_relay_enabled | default(true) %}
+          # Route SDK API calls to Relay (required for Sentry 24.x+)
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: sentry-relay
+                port:
+                  number: 3000
+{% endif %}
+          # Route all other traffic to sentry-web
           - path: /
             pathType: Prefix
             backend:

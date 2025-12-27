@@ -18,6 +18,15 @@
     sentry_version: "24.11.1"
     sentry_domain: "sentry.academind.ir"
     sentry_namespace: "sentry"
+    
+    # Enable Relay for SDK event ingestion (required for Sentry 24.x+)
+    sentry_relay_enabled: true
+    
+    # CSRF trusted origins for frontend
+    sentry_csrf_trusted_origins:
+      - "https://sentry.academind.ir"
+      - "https://dev.academind.ir"
+      - "https://academind.ir"
 
     # Admin credentials (should be in vault)
     sentry_admin_email: "{{ sentry_admin_email | default('admin@academind.ir') }}"

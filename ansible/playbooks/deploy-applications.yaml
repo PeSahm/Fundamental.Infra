@@ -23,7 +23,7 @@
   vars:
     argocd_namespace: argocd
     git_repo_url: "https://github.com/PeSahm/Fundamental.Infra.git"
-    git_branch: main
+    git_branch: "{{ infra_git_branch | default('develop') }}"
     deploy_environments:
       - dev
       # - prod  # Uncomment when ready for production

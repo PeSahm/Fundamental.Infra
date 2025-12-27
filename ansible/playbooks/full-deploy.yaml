@@ -9,7 +9,13 @@
 # 3. Cert-Manager Setup (ClusterIssuers)
 # 4. Kubernetes Secrets
 # 5. ArgoCD Installation
-# 6. Application Deployment
+# 6. Kubernetes Dashboard
+# 7. Sentry Deployment
+# 8. Application Deployment (Backend, Frontend, Migrations via ArgoCD)
+#
+# Note: GitHub Actions Runner requires manual token, run separately:
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-github-runner.yaml \
+#     -e "github_runner_token=YOUR_TOKEN"
 #
 # Usage:
 #   ansible-playbook -i inventory/hosts.ini playbooks/full-deploy.yaml
@@ -20,6 +26,8 @@
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-cert-manager.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-kubernetes-secrets.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/setup-argocd.yaml
+#   ansible-playbook -i inventory/hosts.ini playbooks/setup-kubernetes-dashboard.yaml
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy-sentry.yaml
 #   ansible-playbook -i inventory/hosts.ini playbooks/deploy-applications.yaml
 
 - name: "Step 1: Setup VPS Infrastructure"
@@ -40,7 +48,11 @@
 - name: "Step 6: Setup Kubernetes Dashboard"
   ansible.builtin.import_playbook: setup-kubernetes-dashboard.yaml
 
-- name: "Step 7: Deploy Applications"
+- name: "Step 7: Deploy Sentry"
+  ansible.builtin.import_playbook: deploy-sentry.yaml
+
+- name: "Step 8: Deploy Applications"
   ansible.builtin.import_playbook: deploy-applications.yaml
 
 # Final summary is displayed by deploy-applications.yaml
+
