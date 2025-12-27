@@ -1,6 +1,13 @@
 ---
 # Group Variables for All Hosts
 # =============================
+# Combined variables from both original files
+
+# =============================================================================
+# VPS Configuration
+# =============================================================================
+vps_ip: "5.10.248.55"
+ansible_user: "root"
 
 # Timezone
 timezone: Asia/Tehran
@@ -20,7 +27,9 @@ common_packages:
   - lsb-release
   - software-properties-common
 
+# =============================================================================
 # UFW Firewall Configuration
+# =============================================================================
 ufw_enabled: true
 ufw_default_incoming: deny
 ufw_default_outgoing: allow
@@ -31,8 +40,9 @@ ufw_allowed_ports:
   - { port: 16443, proto: tcp, comment: "MicroK8s API Server" }
   - { port: 18080, proto: tcp, comment: "ocr" }
 
-
+# =============================================================================
 # MicroK8s Configuration
+# =============================================================================
 microk8s_version: "1.28/stable"
 microk8s_addons:
   - dns
@@ -46,3 +56,47 @@ microk8s_addons:
 
 # Docker Configuration
 docker_users: []
+
+# =============================================================================
+# Shared Services
+# =============================================================================
+registry_domain: "registry.academind.ir"
+registry_username: "fundamental"
+registry_external_host: "registry.academind.ir"
+
+argocd_domain: "argocd.academind.ir"
+argocd_namespace: "argocd"
+
+# =============================================================================
+# GitHub Configuration
+# =============================================================================
+github_owner: "PeSahm"
+registry_host: "registry.academind.ir"
+
+# =============================================================================
+# Kubernetes Configuration
+# =============================================================================
+ingress_class: "public"
+cluster_issuer: "letsencrypt-prod"
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+environments:
+  dev:
+    domain: "dev.academind.ir"
+    namespace: "fundamental-dev"
+    branch: "develop"
+    image_tag: "dev-latest"
+  prod:
+    domain: "sahmbaz.ir"
+    namespace: "fundamental-prod"
+    branch: "main"
+    image_tag: "prod-latest"
+
+# Default Environment (for single-env playbooks)
+domain_base: "dev.academind.ir"
+default_namespace: "fundamental-dev"
+
+# Credentials Directory
+credentials_dir: "/root/.fundamental-credentials"
