@@ -71,7 +71,10 @@
         cmd: terragrunt init
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].dns }}"
       environment:
-        CLOUDFLARE_API_TOKEN: "{{ lookup('env', env_paths[terraform_environment].cloudflare_token_var) }}"
+        CLOUDFLARE_API_TOKEN_DEV: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN_DEV') }}"
+        CLOUDFLARE_ZONE_ID_DEV: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID_DEV') }}"
+        CLOUDFLARE_API_TOKEN_PROD: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN_PROD') }}"
+        CLOUDFLARE_ZONE_ID_PROD: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID_PROD') }}"
       register: dns_init
       changed_when: "'Terraform has been successfully initialized' in dns_init.stdout"
 
@@ -80,7 +83,10 @@
         cmd: terragrunt plan -out=tfplan -detailed-exitcode
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].dns }}"
       environment:
-        CLOUDFLARE_API_TOKEN: "{{ lookup('env', env_paths[terraform_environment].cloudflare_token_var) }}"
+        CLOUDFLARE_API_TOKEN_DEV: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN_DEV') }}"
+        CLOUDFLARE_ZONE_ID_DEV: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID_DEV') }}"
+        CLOUDFLARE_API_TOKEN_PROD: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN_PROD') }}"
+        CLOUDFLARE_ZONE_ID_PROD: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID_PROD') }}"
       register: dns_plan
       changed_when: dns_plan.rc == 2
       failed_when: dns_plan.rc not in [0, 2]
@@ -90,7 +96,10 @@
         cmd: terragrunt apply tfplan
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].dns }}"
       environment:
-        CLOUDFLARE_API_TOKEN: "{{ lookup('env', env_paths[terraform_environment].cloudflare_token_var) }}"
+        CLOUDFLARE_API_TOKEN_DEV: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN_DEV') }}"
+        CLOUDFLARE_ZONE_ID_DEV: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID_DEV') }}"
+        CLOUDFLARE_API_TOKEN_PROD: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN_PROD') }}"
+        CLOUDFLARE_ZONE_ID_PROD: "{{ lookup('env', 'CLOUDFLARE_ZONE_ID_PROD') }}"
       when: dns_plan.rc == 2 and terraform_auto_approve | bool
       register: dns_apply
 
@@ -106,6 +115,13 @@
       ansible.builtin.command:
         cmd: terragrunt init
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      environment:
+        GITHUB_TOKEN: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+        SSH_PRIVATE_KEY: "{{ lookup('env', 'SSH_PRIVATE_KEY') }}"
+        REGISTRY_USER: "{{ lookup('env', 'REGISTRY_USER') }}"
+        REGISTRY_PASSWORD: "{{ lookup('env', 'REGISTRY_PASSWORD') }}"
+        SENTRY_DSN: "{{ lookup('env', 'SENTRY_DSN') }}"
+        SENTRY_AUTH_TOKEN: "{{ lookup('env', 'SENTRY_AUTH_TOKEN') }}"
       register: github_init
       changed_when: "'Terraform has been successfully initialized' in github_init.stdout"
 
@@ -113,6 +129,13 @@
       ansible.builtin.command:
         cmd: "terragrunt import '{{ item.resource }}' '{{ item.id }}'"
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      environment:
+        GITHUB_TOKEN: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+        SSH_PRIVATE_KEY: "{{ lookup('env', 'SSH_PRIVATE_KEY') }}"
+        REGISTRY_USER: "{{ lookup('env', 'REGISTRY_USER') }}"
+        REGISTRY_PASSWORD: "{{ lookup('env', 'REGISTRY_PASSWORD') }}"
+        SENTRY_DSN: "{{ lookup('env', 'SENTRY_DSN') }}"
+        SENTRY_AUTH_TOKEN: "{{ lookup('env', 'SENTRY_AUTH_TOKEN') }}"
       loop:
         - { resource: 'github_repository.repos["Fundamental.Backend"]', id: 'Fundamental.Backend' }
         - { resource: 'github_repository.repos["Fundamental.FrontEnd"]', id: 'Fundamental.FrontEnd' }
@@ -125,6 +148,13 @@
       ansible.builtin.command:
         cmd: terragrunt plan -out=tfplan -detailed-exitcode
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      environment:
+        GITHUB_TOKEN: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+        SSH_PRIVATE_KEY: "{{ lookup('env', 'SSH_PRIVATE_KEY') }}"
+        REGISTRY_USER: "{{ lookup('env', 'REGISTRY_USER') }}"
+        REGISTRY_PASSWORD: "{{ lookup('env', 'REGISTRY_PASSWORD') }}"
+        SENTRY_DSN: "{{ lookup('env', 'SENTRY_DSN') }}"
+        SENTRY_AUTH_TOKEN: "{{ lookup('env', 'SENTRY_AUTH_TOKEN') }}"
       register: github_plan
       changed_when: github_plan.rc == 2
       failed_when: github_plan.rc not in [0, 2]
@@ -133,6 +163,13 @@
       ansible.builtin.command:
         cmd: terragrunt apply tfplan
         chdir: "{{ infra_root }}/{{ env_paths[terraform_environment].github }}"
+      environment:
+        GITHUB_TOKEN: "{{ lookup('env', 'GITHUB_TOKEN') }}"
+        SSH_PRIVATE_KEY: "{{ lookup('env', 'SSH_PRIVATE_KEY') }}"
+        REGISTRY_USER: "{{ lookup('env', 'REGISTRY_USER') }}"
+        REGISTRY_PASSWORD: "{{ lookup('env', 'REGISTRY_PASSWORD') }}"
+        SENTRY_DSN: "{{ lookup('env', 'SENTRY_DSN') }}"
+        SENTRY_AUTH_TOKEN: "{{ lookup('env', 'SENTRY_AUTH_TOKEN') }}"
       when: github_plan.rc == 2 and terraform_auto_approve | bool
       register: github_apply
 
