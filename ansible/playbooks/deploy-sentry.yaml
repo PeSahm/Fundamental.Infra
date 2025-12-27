@@ -29,15 +29,19 @@
       - "https://academind.ir"
 
     # Admin credentials (should be in vault)
-    sentry_admin_email: "{{ sentry_admin_email | default('admin@academind.ir') }}"
-    sentry_admin_password: "{{ sentry_admin_password | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits')) }}"
+    sentry_admin_email: "admin@academind.ir"
+    _sentry_admin_password_default: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    sentry_admin_password: "{{ _sentry_admin_password_default }}"
 
     # Secret key for Sentry (50+ chars)
-    sentry_secret_key: "{{ sentry_secret_key | default(lookup('password', '/dev/null length=64 chars=ascii_letters,digits')) }}"
+    _sentry_secret_key_default: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits') }}"
+    sentry_secret_key: "{{ _sentry_secret_key_default }}"
 
     # Database credentials
-    sentry_postgres_password: "{{ sentry_postgres_password | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits')) }}"
-    sentry_redis_password: "{{ sentry_redis_password | default(lookup('password', '/dev/null length=24 chars=ascii_letters,digits')) }}"
+    _sentry_postgres_password_default: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    sentry_postgres_password: "{{ _sentry_postgres_password_default }}"
+    _sentry_redis_password_default: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+    sentry_redis_password: "{{ _sentry_redis_password_default }}"
 
     # GitHub Integration (optional)
     sentry_github_enabled: true
@@ -423,7 +427,7 @@
     - name: Deploy Sentry services
       shell: |
         cat <<'EOF' | microk8s kubectl apply -f -
-        {{ lookup('template', 'sentry-deployment.yaml.j2') }}
+        {{ lookup('template', '../templates/sentry-deployment.yaml.j2') }}
         EOF
       changed_when: false
 
