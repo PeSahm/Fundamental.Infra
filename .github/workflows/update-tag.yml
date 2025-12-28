@@ -183,9 +183,13 @@ jobs:
           
           echo "Target branch: $TARGET_BRANCH"
           
-          # Fetch and checkout target branch
+          # Stash any local changes, fetch and checkout target branch
+          git stash --include-untracked || true
           git fetch origin $TARGET_BRANCH
-          git checkout $TARGET_BRANCH
+          git checkout -B $TARGET_BRANCH origin/$TARGET_BRANCH
+          
+          # Now update the values file on the correct branch
+          yq -i ".${{ steps.vars.outputs.component }}.image.tag = \"$TAG\"" "$VALUES_FILE"
           
           # Check if there are changes
           if git diff --quiet "$VALUES_FILE"; then
@@ -206,10 +210,19 @@ jobs:
           git add "$VALUES_FILE"
           git commit -m "$COMMIT_MSG" -m "$COMMIT_BODY"
           
-          # Push changes
-          git push origin $TARGET_BRANCH
+          # Push changes with retry for race conditions
+          for i in 1 2 3; do
+            if git push origin $TARGET_BRANCH; then
+              echo "✅ Successfully updated $COMPONENT to $TAG in $ENV environment (branch: $TARGET_BRANCH)"
+              exit 0
+            fi
+            echo "Push failed, attempt $i. Rebasing and retrying..."
+            git fetch origin $TARGET_BRANCH
+            git rebase origin/$TARGET_BRANCH
+          done
           
-          echo "✅ Successfully updated $COMPONENT to $TAG in $ENV environment (branch: $TARGET_BRANCH)"
+          echo "❌ Failed to push after 3 attempts"
+          exit 1
       
       - name: Create Summary
         run: |
