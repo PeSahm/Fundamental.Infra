@@ -109,6 +109,10 @@ spec:
             - name: ASPNETCORE_URLS
               value: "http://+:{{ .Values.backend.containerPort | default 8080 }}"
             
+            # Sentry environment (lowercase: development, staging, production)
+            - name: SENTRY_ENVIRONMENT
+              value: {{ .Values.backend.aspnetEnvironment | default "Production" | lower | quote }}
+            
             # Database credentials from secret
             - name: DB_USERNAME
               valueFrom:
