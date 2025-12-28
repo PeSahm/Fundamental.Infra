@@ -4,6 +4,13 @@ Backend ConfigMap
 =============================================================================
 Non-sensitive configuration for the backend application.
 Sensitive data should be in Secrets, not here.
+
+This ConfigMap is visible and editable in K8s Dashboard:
+  Config and Storage > Config Maps > *-backend-config
+
+To change values:
+  1. Edit in Dashboard (temporary - resets on ArgoCD sync)
+  2. Edit values-dev.yaml and push (permanent via GitOps)
 =============================================================================
 */}}
 {{- if .Values.backend.enabled }}
@@ -15,23 +22,88 @@ metadata:
   labels:
     {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
 data:
-  # Note: Connection strings moved to deployment env: section
-  # because $(VAR) substitution doesn't work in ConfigMap envFrom
+  # ==========================================================================
+  # Logging Configuration
+  # ==========================================================================
+  Logging__LogLevel__Default: {{ ((.Values.backend.logging).level) | default "Information" | quote }}
+  Logging__LogLevel__Microsoft: {{ ((.Values.backend.logging).microsoftLevel) | default "Warning" | quote }}
+  Logging__LogLevel__Microsoft.Hosting.Lifetime: "Information"
+  Logging__LogLevel__System: {{ ((.Values.backend.logging).systemLevel) | default "Warning" | quote }}
   
-  # Application settings
+  # ==========================================================================
+  # Serilog Configuration
+  # ==========================================================================
+  Serilog__MinimumLevel__Default: {{ ((.Values.backend.serilog).minimumLevel) | default "Information" | quote }}
+  Serilog__MinimumLevel__Override__Microsoft: {{ ((.Values.backend.serilog).microsoftLevel) | default "Warning" | quote }}
+  Serilog__MinimumLevel__Override__System: {{ ((.Values.backend.serilog).systemLevel) | default "Warning" | quote }}
+  
+  # ==========================================================================
+  # CORS Configuration
+  # ==========================================================================
+  {{- if and .Values.backend.cors .Values.backend.cors.enabled }}
+  Cors__Origins: {{ .Values.backend.cors.origins | default "*" | quote }}
+  {{- end }}
+  
+  # ==========================================================================
+  # Server Configuration
+  # ==========================================================================
+  {{- if .Values.backend.server }}
+  Server: {{ .Values.backend.server | quote }}
+  {{- end }}
+  AllowedHosts: {{ .Values.backend.allowedHosts | default "*" | quote }}
+  
+  # ==========================================================================
+  # External Services - MDP (Market Data Provider)
+  # ==========================================================================
+  {{- with .Values.backend.mdp }}
+  Mdp__Url: {{ .url | default "" | quote }}
+  Mdp__Statement: {{ .statement | default "api/v2/Statement" | quote }}
+  Mdp__StatementJson: {{ .statementJson | default "api/v1/StatementJson" | quote }}
+  Mdp__Publishers: {{ .publishers | default "api/v1/StatementJson/publishers" | quote }}
+  Mdp__ShareHolders: {{ .shareHolders | default "/api/AutoQuery/SymbolShareholders" | quote }}
+  Mdp__Symbol: {{ .symbol | default "/api/AutoQuery/Symbols" | quote }}
+  Mdp__TradeHistory: {{ .tradeHistory | default "/api/AutoQuery/TradeHistory" | quote }}
+  Mdp__Index: {{ .index | default "/api/v1/Index" | quote }}
+  {{- end }}
+  
+  # ==========================================================================
+  # External Services - TSE TMC
+  # ==========================================================================
+  {{- with .Values.backend.tseTmc }}
+  TseTmc__Url: {{ .url | default "https://cdn.tsetmc.com/" | quote }}
+  TseTmc__IndexCompany: {{ .indexCompany | default "/api/ClosingPrice/GetIndexCompany" | quote }}
+  TseTmc__ClosingPriceInfo: {{ .closingPriceInfo | default "/api/ClosingPrice/GetClosingPriceInfo/" | quote }}
+  {{- end }}
+  
+  # ==========================================================================
+  # Job Scheduler Configuration
+  # ==========================================================================
+  JobEnabled: {{ .Values.backend.jobEnabled | default "false" | quote }}
+  {{- if .Values.backend.coravel }}
+  Coravel__Pro__UseClientTimezone: {{ .Values.backend.coravel.useClientTimezone | default "true" | quote }}
+  {{- end }}
+  
+  # ==========================================================================
+  # Sentry Configuration (non-sensitive parts)
+  # DSN is in Secret, these are behavior settings
+  # ==========================================================================
+  {{- with .Values.backend.sentry }}
+  Sentry__MaxRequestBodySize: {{ .maxRequestBodySize | default "Always" | quote }}
+  Sentry__SendDefaultPii: {{ .sendDefaultPii | default "false" | quote }}
+  Sentry__MinimumBreadcrumbLevel: {{ .minimumBreadcrumbLevel | default "Warning" | quote }}
+  Sentry__MinimumEventLevel: {{ .minimumEventLevel | default "Error" | quote }}
+  Sentry__AttachStacktrace: {{ .attachStacktrace | default "true" | quote }}
+  Sentry__Debug: {{ .debug | default "false" | quote }}
+  Sentry__DiagnosticLevel: {{ .diagnosticLevel | default "Warning" | quote }}
+  {{- end }}
+  
+  # ==========================================================================
+  # Custom Application Configuration
+  # Add any key-value pairs to backend.config in values
+  # ==========================================================================
   {{- if .Values.backend.config }}
   {{- range $key, $value := .Values.backend.config }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
-  {{- end }}
-  
-  # Logging configuration
-  Logging__LogLevel__Default: {{ ((.Values.backend.logging).level) | default "Information" | quote }}
-  Logging__LogLevel__Microsoft: {{ ((.Values.backend.logging).microsoftLevel) | default "Warning" | quote }}
-  Logging__LogLevel__Microsoft.Hosting.Lifetime: "Information"
-  
-  # CORS configuration
-  {{- if and .Values.backend.cors .Values.backend.cors.enabled }}
-  Cors__Origins: {{ .Values.backend.cors.origins | default "*" | quote }}
   {{- end }}
 {{- end }}

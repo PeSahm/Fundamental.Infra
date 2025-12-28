@@ -142,17 +142,68 @@ backend:
       jwtSecret: "jwt-secret"
       apiKey: "api-key"
   
+  # ===========================================================================
+  # Application Configuration
+  # All these values are exposed in K8s Dashboard under ConfigMaps
+  # To change: edit values-dev/prod.yaml or directly in Dashboard (temp)
+  # ===========================================================================
+  
   # Logging configuration
   logging:
     level: "Information"
     microsoftLevel: "Warning"
+    systemLevel: "Warning"
+  
+  # Serilog configuration
+  serilog:
+    minimumLevel: "Information"
+    microsoftLevel: "Warning"
+    systemLevel: "Warning"
   
   # CORS configuration
   cors:
     enabled: true
     origins: "*"
   
-  # Additional application configuration
+  # Server URL (for generating links, etc.)
+  server: ""
+  allowedHosts: "*"
+  
+  # Market Data Provider (MDP) configuration
+  mdp:
+    url: ""
+    statement: "api/v2/Statement"
+    statementJson: "api/v1/StatementJson"
+    publishers: "api/v1/StatementJson/publishers"
+    shareHolders: "/api/AutoQuery/SymbolShareholders"
+    symbol: "/api/AutoQuery/Symbols"
+    tradeHistory: "/api/AutoQuery/TradeHistory"
+    index: "/api/v1/Index"
+  
+  # TSE TMC configuration
+  tseTmc:
+    url: "https://cdn.tsetmc.com/"
+    indexCompany: "/api/ClosingPrice/GetIndexCompany"
+    closingPriceInfo: "/api/ClosingPrice/GetClosingPriceInfo/"
+  
+  # Job scheduler
+  jobEnabled: "false"
+  coravel:
+    useClientTimezone: "true"
+  
+  # Sentry error tracking configuration (non-sensitive)
+  # DSN is stored in Secret, these control behavior
+  sentry:
+    maxRequestBodySize: "Always"
+    sendDefaultPii: "false"
+    minimumBreadcrumbLevel: "Warning"
+    minimumEventLevel: "Error"
+    attachStacktrace: "true"
+    debug: "false"
+    diagnosticLevel: "Warning"
+  
+  # Additional application configuration (key-value pairs)
+  # These get added directly to ConfigMap
   config: {}
   #  CustomSetting__Key: "value"
 

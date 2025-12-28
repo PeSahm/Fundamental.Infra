@@ -56,6 +56,49 @@ backend:
     keys:
       jwtSecret: "jwt-secret"
       apiKey: "api-key"
+  
+  # ===========================================================================
+  # Development Environment Configuration
+  # All visible in K8s Dashboard: Config Maps > *-backend-config
+  # ===========================================================================
+  
+  # Logging - more verbose in dev
+  logging:
+    level: "Debug"
+    microsoftLevel: "Warning"
+    systemLevel: "Warning"
+  
+  # Serilog - more verbose in dev  
+  serilog:
+    minimumLevel: "Debug"
+    microsoftLevel: "Warning"
+    systemLevel: "Warning"
+  
+  # Server URL
+  server: "https://dev.academind.ir"
+  
+  # CORS - allow local dev
+  cors:
+    enabled: true
+    origins: "https://dev.academind.ir,http://localhost:4200,https://localhost:4200"
+  
+  # Market Data Provider
+  mdp:
+    url: ""  # Set your MDP URL here
+  
+  # TSE TMC
+  tseTmc:
+    url: "https://cdn.tsetmc.com/"
+  
+  # Job scheduler - disabled in dev by default
+  jobEnabled: "false"
+  
+  # Sentry - more verbose debugging in dev
+  sentry:
+    debug: "true"
+    diagnosticLevel: "Debug"
+    minimumEventLevel: "Warning"
+    minimumBreadcrumbLevel: "Debug"
 # =============================================================================
 # Frontend (Development)
 # =============================================================================

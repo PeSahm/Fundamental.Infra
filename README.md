@@ -558,6 +558,101 @@ ssh root@5.10.248.55 'cat /root/.fundamental-credentials/kubernetes-dashboard-to
 
 ---
 
+## Application Configuration (appsettings)
+
+### Overview
+
+Backend configuration from `appsettings.json` is exposed via Kubernetes ConfigMaps:
+
+| Method | Persistence | Best For |
+|--------|-------------|----------|
+| K8s Dashboard | ⚠️ Temporary (until ArgoCD sync) | Quick testing |
+| values-dev/prod.yaml | ✅ Permanent (GitOps) | Production changes |
+
+### View Current Configuration
+
+**Kubernetes Dashboard:**
+1. Go to https://k8s.academind.ir
+2. Navigate to: Config and Storage > Config Maps
+3. Select: `fundamental-dev-fundamental-stack-backend-config`
+
+**Command Line:**
+```bash
+# View all config values
+microk8s kubectl get configmap -n fundamental-dev \
+  fundamental-dev-fundamental-stack-backend-config -o yaml
+
+# View specific value
+microk8s kubectl get configmap -n fundamental-dev \
+  fundamental-dev-fundamental-stack-backend-config \
+  -o jsonpath='{.data.Logging__LogLevel__Default}'
+```
+
+### Available Configuration Options
+
+| Setting | values.yaml Key | Description |
+|---------|-----------------|-------------|
+| Logging Level | `backend.logging.level` | Default: Information |
+| Microsoft Log Level | `backend.logging.microsoftLevel` | Default: Warning |
+| CORS Origins | `backend.cors.origins` | Comma-separated URLs |
+| Server URL | `backend.server` | Public URL |
+| MDP URL | `backend.mdp.url` | Market Data Provider |
+| TSE TMC URL | `backend.tseTmc.url` | Tehran Stock Exchange |
+| Job Enabled | `backend.jobEnabled` | Enable scheduled jobs |
+| Sentry Debug | `backend.sentry.debug` | Enable Sentry debugging |
+| Custom | `backend.config.Key__Name` | Any custom key-value |
+
+### Temporary Changes (Dashboard)
+
+Edit directly in K8s Dashboard. Changes apply immediately but reset on ArgoCD sync:
+
+```bash
+# Edit via kubectl
+microk8s kubectl edit configmap -n fundamental-dev \
+  fundamental-dev-fundamental-stack-backend-config
+
+# Restart backend to pick up changes
+microk8s kubectl rollout restart deployment -n fundamental-dev \
+  fundamental-dev-fundamental-stack-backend
+```
+
+### Permanent Changes (GitOps)
+
+Edit `charts/fundamental-stack/values-dev.yaml`:
+
+```yaml
+backend:
+  logging:
+    level: "Debug"
+    microsoftLevel: "Warning"
+  cors:
+    origins: "https://dev.academind.ir,http://localhost:4200"
+  mdp:
+    url: "https://your-mdp-service.com"
+  sentry:
+    debug: "true"
+  # Custom settings
+  config:
+    MyCustom__Setting: "value"
+```
+
+Then commit and push - ArgoCD will sync automatically.
+
+### Secrets (Sensitive Data)
+
+Sensitive data (passwords, DSNs, API keys) are stored in Secrets, not ConfigMaps:
+
+| Secret | Contains |
+|--------|----------|
+| `postgresql-credentials` | Database username/password |
+| `redis-credentials` | Redis password |
+| `sentry-credentials` | Sentry DSN |
+| `fundamental-backend-secrets` | JWT secret, API keys |
+
+View secrets in K8s Dashboard: Config and Storage > Secrets
+
+---
+
 ## Common Tasks
 
 ### Checking Deployment Status
