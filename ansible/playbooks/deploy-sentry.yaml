@@ -433,7 +433,9 @@
 
     - name: Wait for ClickHouse to be ready
       shell: |
-        microk8s kubectl wait --for=condition=ready pod -l app=sentry-clickhouse -n {{ sentry_namespace }} --timeout=300s
+        microk8s kubectl wait --for=condition=ready \
+          pod -l app=sentry-clickhouse \
+          -n {{ sentry_namespace }} --timeout=300s
       changed_when: false
       retries: 5
       delay: 30

@@ -13,7 +13,7 @@
     # Override for container testing (no snap/microk8s in Docker)
     skip_microk8s: true
     skip_ufw: true
-    
+
     # Import variables from group_vars
     timezone: Asia/Tehran
     common_packages:

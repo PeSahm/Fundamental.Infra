@@ -103,7 +103,7 @@
 
     - name: Configure runner (organization level)
       ansible.builtin.command:
-        cmd: >
+        cmd: >-
           ./config.sh --url https://github.com/{{ github_owner }}
           --token {{ github_runner_token }}
           --name {{ runner_name }}
@@ -111,6 +111,7 @@
           --unattended
           --replace
         chdir: "{{ runner_home }}"
+      become: true
       become_user: "{{ runner_user }}"
       when: not runner_configured.stat.exists
       no_log: true  # Hide token from logs

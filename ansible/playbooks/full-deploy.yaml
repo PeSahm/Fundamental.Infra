@@ -63,4 +63,3 @@
   ansible.builtin.import_playbook: deploy-applications.yaml
 
 # Final summary is displayed by deploy-applications.yaml
-

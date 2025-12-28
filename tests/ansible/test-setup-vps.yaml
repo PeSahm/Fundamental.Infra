@@ -79,7 +79,9 @@
       failed_when: kubectl_nodes.rc != 0
 
     - name: Test cluster node is Ready
-      ansible.builtin.command: microk8s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
+      ansible.builtin.command: >-
+        microk8s kubectl get nodes -o
+        jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
       register: node_ready
       changed_when: false
       failed_when: node_ready.stdout != "True"
