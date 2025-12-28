@@ -400,10 +400,9 @@ postgresql:
     # storageClass: ""
   
   # Resources
+  # NOTE: Limits removed by default to allow large operations (e.g., restores)
+  # Add limits in production values if needed
   resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
     requests:
       cpu: 100m
       memory: 256Mi
