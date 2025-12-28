@@ -476,74 +476,28 @@ This will:
 
 ### Post-Deployment Setup
 
-After deployment, complete the following manual steps:
+The Sentry deployment is **fully automated**. The playbook automatically:
+- Creates the `fundamental` organization
+- Creates `fundamental-backend` and `fundamental-angular-admin` projects
+- Generates API auth token with CI/CD scopes
+- Updates GitHub secrets (`SENTRY_AUTH_TOKEN`, `SENTRY_DSN`) in both repos
 
-#### 1. Access Sentry UI
-- URL: https://sentry.academind.ir
-- Get credentials: `ssh root@5.10.248.55 "cat /root/.sentry-credentials"`
-
-#### 2. First Login
-1. Login with admin credentials
-2. If you see "Unable to load configuration" - wait 30 seconds and refresh
-3. Complete the onboarding wizard
-
-#### 3. Create Projects
-1. Go to **Settings → Projects → Create Project**
-2. Create **dotnet-backend**:
-   - Platform: .NET
-   - Project Name: dotnet-backend
-3. Create **angular-frontend**:
-   - Platform: JavaScript / Angular
-   - Project Name: angular-frontend
-
-#### 4. Get DSN Values
-1. Go to **Settings → Projects → [project] → Client Keys (DSN)**
-2. Copy the DSN for each project
-3. DSN format: `https://[key]@sentry.academind.ir/[project-id]`
-
-#### 5. Create Auth Token (for source maps)
-1. Go to **Settings → Auth Tokens**
-2. Create new token with scopes:
-   - `project:releases`
-   - `org:read`
-3. Copy the token for CI/CD
-
-#### 6. Add GitHub Secrets
-Add these secrets to Fundamental.Backend and Fundamental.FrontEnd repos:
-```
-SENTRY_DSN          = Backend DSN
-SENTRY_DSN_FRONTEND = Frontend DSN  
-SENTRY_AUTH_TOKEN   = Auth token for source maps
-SENTRY_ORG          = sentry (default org name)
-SENTRY_PROJECT_BACKEND  = dotnet-backend
-SENTRY_PROJECT_FRONTEND = angular-frontend
-```
-
-#### 7. Configure CSRF (if needed)
-If you get CSRF errors, add your domain to the config:
-```bash
-# SSH to VPS and edit configmap
-ssh root@5.10.248.55
-microk8s kubectl edit configmap sentry-config -n sentry
-# Add to sentry.conf.py:
-# CSRF_TRUSTED_ORIGINS = ["https://sentry.academind.ir"]
-```
-
-### Verify Deployment
+#### Verify Deployment
 
 ```bash
-# Check pods
+# Check pods are running
 ssh root@5.10.248.55 "microk8s kubectl get pods -n sentry"
 
-# Check services
-ssh root@5.10.248.55 "microk8s kubectl get svc -n sentry"
+# Check Sentry UI is accessible
+curl -sk https://sentry.academind.ir/auth/login/ | head -5
 
-# Check ingress
-ssh root@5.10.248.55 "microk8s kubectl get ingress -n sentry"
-
-# View credentials
-ssh root@5.10.248.55 "cat /root/.sentry-credentials"
+# View credentials (admin login + API token + DSNs)
+ssh root@5.10.248.55 "cat /root/.fundamental-credentials/sentry-credentials.txt"
 ```
+
+#### Access Sentry UI
+- URL: https://sentry.academind.ir
+- Default admin: `admin@academind.ir` (password in credentials file)
 
 ### Troubleshooting
 

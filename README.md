@@ -341,8 +341,8 @@ on:
     branches: [main, develop]
 
 # Branch → Environment mapping:
-# - main → prod (prod-latest tag)
-# - develop → dev (dev-latest tag)
+# - main → prod (prod-YYYYMMDD-SHA tag)
+# - develop → dev (dev-YYYYMMDD-SHA tag)
 ```
 
 ### Frontend Pipeline (Fundamental.FrontEnd)
@@ -355,15 +355,17 @@ on:
 # Same branch → environment mapping as Backend
 ```
 
-### Infra Update Pipeline
+### GitOps Flow (Automatic Deployment)
 
-When Backend/Frontend CI triggers the `update-image-tag` event:
+When code is pushed to Backend/Frontend:
 
-1. Validates environment (dev/prod)
-2. Determines target branch (develop/main)
-3. Updates appropriate values file
-4. Commits and pushes to correct branch
-5. ArgoCD detects and syncs
+1. **CI builds** Docker image with versioned tag (e.g., `dev-20251228-abc1234`)
+2. **CI triggers** `repository_dispatch` → Infra repo
+3. **GitOps workflow** updates `values-{env}.yaml` with new image tag
+4. **ArgoCD detects** the Git change and auto-syncs
+5. **Kubernetes** pulls new image and restarts pods
+
+This flow is fully automatic - no manual intervention required.
 
 ---
 
