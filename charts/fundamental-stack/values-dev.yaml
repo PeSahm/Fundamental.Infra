@@ -89,10 +89,10 @@ backend:
   # TSE TMC
   tseTmc:
     url: "https://cdn.tsetmc.com/"
-  
-  # Job scheduler - disabled in dev by default
-  jobEnabled: "false"
-  
+
+  # Job scheduler - enabled for dev
+  jobEnabled: "true"
+
   # Sentry - more verbose debugging in dev
   sentry:
     debug: "true"
