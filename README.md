@@ -410,13 +410,38 @@ docker login registry.academind.ir
 
 ### Database Access (Development)
 
-PostgreSQL is exposed on NodePort for debugging:
+PostgreSQL can be accessed externally via port forwarding:
 
 ```bash
-# From local machine
-psql -h 5.10.248.55 -p 30432 -U fundamental -d fundamental_dev
-# Password: WsqVTUish0Lf8uUvzySQlskd
+# SSH to VPS and start port forward (port 5433)
+ssh root@5.10.248.55 '/root/scripts/pg-port-forward.sh start'
+
+# Check status
+ssh root@5.10.248.55 '/root/scripts/pg-port-forward.sh status'
+
+# Stop when done
+ssh root@5.10.248.55 '/root/scripts/pg-port-forward.sh stop'
 ```
+
+**Connection Details:**
+| Parameter | Value |
+|-----------|-------|
+| Host | `5.10.248.55` |
+| Port | `5433` |
+| Database | `fundamental_dev` |
+| Username | `fundamental` |
+| Password | `NMC1yGjPQvUnx3qhTB4xSelH` |
+
+```bash
+# Connect with psql
+psql -h 5.10.248.55 -p 5433 -U fundamental -d fundamental_dev
+
+# Or use connection string
+postgresql://fundamental:NMC1yGjPQvUnx3qhTB4xSelH@5.10.248.55:5433/fundamental_dev
+```
+
+> **Note:** Port forward uses `socat` to bridge external port 5433 to the PostgreSQL pod.
+> The forward is not persistent across reboots - run the start command when needed.
 
 ---
 
