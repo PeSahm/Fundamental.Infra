@@ -1,5 +1,5 @@
 # =============================================================================
-# Update Image Tag Workflow
+# GitOps Image Tag Update Workflow
 # =============================================================================
 # This workflow is triggered by repository_dispatch events to update image tags
 # in Helm values files. This enables GitOps-style deployments with ArgoCD.
@@ -19,7 +19,7 @@
 #     --field "client_payload[environment]=prod"
 # =============================================================================
 
-name: Update Image Tag
+name: GitOps Update Image Tag
 
 on:
   repository_dispatch:
