@@ -23,7 +23,7 @@ backend:
   replicaCount: 1
   image:
     repository: registry.academind.ir/fundamental-backend
-    tag: "dev-20251228-2a72ac6"
+    tag: "dev-20251228-d1e94fa"
     pullPolicy: Always
   aspnetEnvironment: "Development"
   resources:
@@ -56,43 +56,35 @@ backend:
     keys:
       jwtSecret: "jwt-secret"
       apiKey: "api-key"
-  
   # ===========================================================================
   # Development Environment Configuration
   # All visible in K8s Dashboard: Config Maps > *-backend-config
   # ===========================================================================
-  
+
   # Logging - more verbose in dev
   logging:
     level: "Debug"
     microsoftLevel: "Warning"
     systemLevel: "Warning"
-  
   # Serilog - more verbose in dev  
   serilog:
     minimumLevel: "Debug"
     microsoftLevel: "Warning"
     systemLevel: "Warning"
-  
   # Server URL
   server: "https://dev.academind.ir"
-  
   # CORS - allow local dev
   cors:
     enabled: true
     origins: "https://dev.academind.ir,http://localhost:4200,https://localhost:4200"
-  
   # Market Data Provider
   mdp:
-    url: ""  # Set your MDP URL here
-  
+    url: "" # Set your MDP URL here
   # TSE TMC
   tseTmc:
     url: "https://cdn.tsetmc.com/"
-
   # Job scheduler - enabled for dev
   jobEnabled: "true"
-
   # Sentry - more verbose debugging in dev
   sentry:
     debug: "true"
@@ -176,7 +168,6 @@ ingress:
     - secretName: dev-academind-ir-tls
       hosts:
         - dev.academind.ir
-
 # =============================================================================
 # API Ingress (Development) - Dedicated API domain
 # =============================================================================
@@ -196,7 +187,6 @@ apiIngress:
   host: "api.academind.ir"
   tls:
     secretName: api-academind-ir-tls
-
 # =============================================================================
 # PostgreSQL (Development)
 # =============================================================================
