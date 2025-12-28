@@ -151,12 +151,11 @@ postgresql:
     enabled: true
     size: 5Gi
   resources:
-    limits:
-      cpu: 300m
-      memory: 256Mi
+    # No limits - allow PostgreSQL to use available resources for large operations
+    # (e.g., restoring 500MB+ dump files)
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: 100m
+      memory: 512Mi
 # =============================================================================
 # Redis (Development)
 # =============================================================================
