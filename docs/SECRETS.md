@@ -1,26 +1,147 @@
-# GitHub Actions Secrets Configuration
+# Secrets & Environment Variables Configuration
 
-This document lists all secrets required for GitHub Actions CI/CD pipelines.
+Complete reference for all secrets, environment variables, and credentials required for the Fundamental infrastructure.
 
-> ⚠️ **SECURITY WARNING**: Never commit actual secret values. This document only describes what secrets are needed and where to get them.
+> ⚠️ **SECURITY WARNING**: Never commit actual secret values. This document only describes what is needed and where to find them.
 
-## 🤖 Automated vs Manual Secrets
-
-| Secret | Automated | Manual Setup Required |
-|--------|-----------|----------------------|
-| `REGISTRY_USERNAME` | ✅ Ansible generates | ❌ |
-| `REGISTRY_PASSWORD` | ✅ Ansible generates | ❌ |
-| `SENTRY_AUTH_TOKEN` | ✅ Ansible creates & updates GitHub | ❌ |
-| `SENTRY_DSN` | ✅ Ansible creates & updates GitHub | ❌ |
-| `INFRA_REPO_TOKEN` | ❌ | ✅ GitHub PAT required |
+---
 
 ## 📋 Table of Contents
 
+- [Quick Reference](#quick-reference)
+- [Local Environment Variables (.env)](#local-environment-variables-env)
+- [GitHub Actions Secrets](#github-actions-secrets)
+- [Kubernetes Secrets (Helm)](#kubernetes-secrets-helm)
 - [Automated Secrets](#automated-secrets)
 - [Manual Secrets](#manual-secrets)
 - [Backend Repository Secrets](#backend-repository-secrets)
 - [Frontend Repository Secrets](#frontend-repository-secrets)
 - [Credentials Reference](#credentials-reference)
+
+---
+
+## Quick Reference
+
+### Automation Summary
+
+| Secret Category | Auto-Generated | Auto-Deployed to GitHub | Manual Setup |
+|-----------------|----------------|-------------------------|--------------|
+| Registry credentials | ✅ Ansible | ✅ Terraform | - |
+| Sentry credentials | ✅ Ansible | ✅ Ansible | - |
+| ArgoCD password | ✅ Ansible | N/A (K8s only) | - |
+| K8s Dashboard token | ✅ Ansible | N/A (K8s only) | - |
+| Database passwords | ✅ Helm | N/A (K8s only) | - |
+| Cloudflare tokens | ❌ Manual | - | `.env` file |
+| GitHub PAT | ❌ Manual | - | `.env` file + GitHub secrets |
+
+---
+
+## Local Environment Variables (.env)
+
+Required for running Terraform/Terragrunt and Ansible locally.
+
+### Setup
+
+```bash
+# Copy template and fill in values
+cp infrastructure/.env.example infrastructure/.env
+
+# Load before running commands
+source infrastructure/.env
+```
+
+### Required Variables
+
+#### Cloudflare (DNS Management)
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `CLOUDFLARE_API_TOKEN_DEV` | API token for academind.ir | [Cloudflare Dashboard](https://dash.cloudflare.com/profile/api-tokens) → Create Token → "Edit zone DNS" template |
+| `CLOUDFLARE_ZONE_ID_DEV` | Zone ID for academind.ir | Cloudflare Dashboard → academind.ir → Right sidebar → Zone ID |
+| `CLOUDFLARE_API_TOKEN_PROD` | API token for sahmbaz.ir | Same as above, for production domain |
+| `CLOUDFLARE_ZONE_ID_PROD` | Zone ID for sahmbaz.ir | Same as above, for production domain |
+
+**Token Permissions Required:**
+- Zone: DNS: Edit
+- Zone: Zone: Read
+- Zone Resources: Include → Specific zone → (your zone)
+
+#### GitHub (Terraform)
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `GITHUB_TOKEN` | Personal Access Token | [GitHub Settings](https://github.com/settings/tokens) → Generate new token (classic) |
+
+**Token Permissions Required (Classic):**
+- `repo` (Full control of private repositories)
+- `admin:repo_hook` (Admin access to repository hooks)
+- `workflow` (Update GitHub Action workflows)
+
+#### Container Registry (Terraform)
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `REGISTRY_USER` | Registry username | Default: `fundamental` |
+| `REGISTRY_PASSWORD` | Registry password | `ssh root@VPS cat /root/.fundamental-credentials/registry-credentials.txt` |
+
+#### Sentry (Terraform)
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `SENTRY_DSN` | Data Source Name | Sentry → Project Settings → Client Keys |
+| `SENTRY_AUTH_TOKEN` | API auth token | `ssh root@VPS cat /root/.fundamental-credentials/sentry-credentials.txt` |
+
+#### SSH (VPS Access)
+
+| Variable | Description | How to Get |
+|----------|-------------|------------|
+| `SSH_PRIVATE_KEY` | Private key (base64 encoded) | `cat ~/.ssh/id_rsa \| base64 -w0` |
+
+---
+
+## Kubernetes Secrets (Helm)
+
+Secrets referenced via `existingSecret` pattern in Helm values.
+
+### Namespace: `fundamental-dev` / `fundamental-prod`
+
+| Secret Name | Keys | Created By | Referenced In |
+|-------------|------|------------|---------------|
+| `registry-credentials` | `.dockerconfigjson` | Ansible | `imagePullSecrets` |
+| `postgresql-credentials` | `password` | Helm | `backend.database.existingSecret` |
+| `redis-credentials` | `password` | Helm | `backend.redis.existingSecret` |
+
+### Namespace: `sentry`
+
+| Secret Name | Keys | Created By |
+|-------------|------|------------|
+| `sentry-secrets` | `secret-key`, `postgres-password`, `redis-password`, `admin-email`, `admin-password` | Ansible |
+
+### Namespace: `argocd`
+
+| Secret Name | Keys | Created By |
+|-------------|------|------------|
+| `argocd-initial-admin-secret` | `password` | ArgoCD |
+| `argocd-repo-creds-fundamental` | `password` (GitHub token) | Ansible |
+
+---
+
+## Base Images Required in Registry
+
+The following images must be available in `registry.academind.ir` for CI/CD:
+
+| Image | Tag | Used By | How to Add |
+|-------|-----|---------|------------|
+| `library/nginx` | `1.27-alpine` | Frontend Dockerfile | See commands below |
+
+```bash
+# On VPS: Pull from Docker Hub and push to local registry
+docker pull nginx:1.27-alpine
+docker tag nginx:1.27-alpine localhost:32000/library/nginx:1.27-alpine
+docker push localhost:32000/library/nginx:1.27-alpine
+```
+
+> Note: Backend uses Microsoft Container Registry (`mcr.microsoft.com`) which is accessible.
 
 ---
 
@@ -31,18 +152,31 @@ These secrets are automatically created and configured by Ansible playbooks:
 ### Registry Credentials
 - **Created by**: `ansible/playbooks/setup-registry-proxy.yaml`
 - **Saved to**: `/root/.fundamental-credentials/registry-credentials.txt`
-- **GitHub update**: Must be done manually (or via Terraform)
+- **GitHub update**: Via Terraform (`infrastructure/live/development/github/`)
 
 ### Sentry Credentials
 - **Created by**: `ansible/playbooks/deploy-sentry.yaml`
 - **Saved to**: `/root/.fundamental-credentials/sentry-credentials.txt`
-- **GitHub update**: ✅ **Automatic** - Ansible updates GitHub secrets directly
+- **GitHub update**: ✅ **Automatic** - Ansible updates GitHub secrets directly via `gh secret set`
 
 The Sentry playbook automatically:
 1. Creates `fundamental` organization in Sentry
 2. Creates `fundamental-backend` and `fundamental-angular-admin` projects
 3. Generates API auth token with CI/CD scopes
 4. Updates `SENTRY_AUTH_TOKEN` and `SENTRY_DSN` in both GitHub repos
+
+---
+
+## GitHub Actions Variables (Non-Secret)
+
+These are set by Terraform and visible in repository settings:
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `CONTAINER_REGISTRY` | `registry.academind.ir` | Docker registry URL |
+| `DOMAIN` | `dev.academind.ir` / `sahmbaz.ir` | Deployment domain |
+| `SENTRY_ENABLED` | `true` | Enable/disable Sentry |
+| `SENTRY_UPLOAD_SOURCEMAPS` | `true` | Enable/disable source map upload |
 
 ---
 
@@ -263,6 +397,24 @@ echo "<password>" | gh secret set REGISTRY_PASSWORD --repo PeSahm/Fundamental.Ba
 # Then update GitHub secrets
 echo "<new-token>" | gh secret set SENTRY_AUTH_TOKEN --repo PeSahm/Fundamental.Backend
 echo "<new-token>" | gh secret set SENTRY_AUTH_TOKEN --repo PeSahm/Fundamental.FrontEnd
+```
+
+### Cloudflare API Token Invalid
+
+1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+2. Create new token with "Edit zone DNS" template
+3. Scope to specific zone
+4. Update `infrastructure/.env` with new token
+5. Re-run Terraform: `cd infrastructure/live/development/dns && terragrunt apply`
+
+### Missing Local Environment Variables
+
+```bash
+# Check which variables are set
+env | grep -E "CLOUDFLARE|GITHUB|REGISTRY|SENTRY|SSH"
+
+# Source the .env file
+source infrastructure/.env
 ```
 
 ### Check Current Secrets
