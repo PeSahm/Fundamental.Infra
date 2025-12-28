@@ -28,14 +28,16 @@
     runner_home: "/root/actions-runner"
     runner_name: "{{ inventory_hostname }}"
     runner_labels: "self-hosted,Linux,X64,iran"
-    
+
     # GitHub configuration - should be provided via extra vars or vault
     github_owner: "PeSahm"
     # github_runner_token: "" # Must be provided via -e flag or vault
-    
+
     # Runner package URL
-    runner_package_url: "https://github.com/actions/runner/releases/download/v{{ runner_version }}/actions-runner-linux-x64-{{ runner_version }}.tar.gz"
-    
+    runner_package_url: >-
+      https://github.com/actions/runner/releases/download/
+      v{{ runner_version }}/actions-runner-linux-x64-{{ runner_version }}.tar.gz
+
   tasks:
     # =========================================
     # Prerequisites

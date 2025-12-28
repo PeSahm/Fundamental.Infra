@@ -90,7 +90,9 @@
     # =========================================
     - name: Get dashboard token
       ansible.builtin.shell: |
-        microk8s kubectl describe secret -n {{ dashboard_namespace }} microk8s-dashboard-token | grep "^token:" | awk '{print $2}'
+        microk8s kubectl describe secret \
+          -n {{ dashboard_namespace }} microk8s-dashboard-token | \
+          grep "^token:" | awk '{print $2}'
       register: dashboard_token
       changed_when: false
 

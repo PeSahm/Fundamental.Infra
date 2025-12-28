@@ -27,7 +27,7 @@
     terraform_environment: "{{ lookup('env', 'TERRAFORM_ENVIRONMENT') | default('dev', true) }}"
     terraform_auto_approve: "{{ lookup('env', 'TERRAFORM_AUTO_APPROVE') | default('true', true) }}"
     infra_root: "{{ playbook_dir }}/../../infrastructure"
-    
+
     # Environment-specific paths
     env_paths:
       dev:
@@ -186,10 +186,10 @@
           Terraform Setup Complete!
           ============================================
           Environment: {{ terraform_environment }}
-          
+
           DNS Records: {{ 'Applied' if dns_plan.rc == 2 else 'No changes' }}
           GitHub Config: {{ 'Applied' if github_plan.rc == 2 else 'No changes' }}
-          
+
           Next Steps:
           - Continue with VPS setup if not done
           - Or run full-deploy.yaml for complete setup
