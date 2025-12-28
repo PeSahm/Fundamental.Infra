@@ -104,6 +104,12 @@ data:
     SENTRY_TSDB = "sentry.tsdb.redissnuba.RedisSnubaTSDB"
     
     # =============================================================================
+    # File Storage (for source maps, artifacts, etc.)
+    # =============================================================================
+    SENTRY_OPTIONS["filestore.backend"] = "filesystem"
+    SENTRY_OPTIONS["filestore.options"] = {"location": "/data/files"}
+    
+    # =============================================================================
     # Snuba
     # =============================================================================
     SENTRY_SEARCH = "sentry.search.snuba.EventsDatasetSnubaSearchBackend"
