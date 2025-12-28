@@ -63,7 +63,7 @@ frontend:
   replicaCount: 1
   image:
     repository: registry.academind.ir/fundamental-frontend
-    tag: "dev-20251228-3f27200"
+    tag: "dev-20251228-a41dfea"
     pullPolicy: Always
   resources:
     limits:
