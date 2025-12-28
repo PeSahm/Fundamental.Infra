@@ -94,7 +94,7 @@ migrator:
   enabled: true
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "dev-latest"
+    tag: "dev-20251228-4a7608d"
     pullPolicy: Always
   resources:
     limits:
