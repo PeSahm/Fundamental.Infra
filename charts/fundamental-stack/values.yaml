@@ -404,6 +404,32 @@ registryIngress:
     secretName: registry-tls
 
 # =============================================================================
+# API Ingress (dedicated backend API domain)
+# =============================================================================
+# Use this for a separate API-only domain without /api prefix
+# Example: api.academind.ir instead of dev.academind.ir/api
+apiIngress:
+  enabled: false
+  
+  className: "nginx"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  
+  # Host for API (set per environment)
+  host: ""
+  
+  tls:
+    secretName: ""
+    # hosts will be derived from host above
+
+# =============================================================================
 # Network Policies
 # =============================================================================
 networkPolicies:

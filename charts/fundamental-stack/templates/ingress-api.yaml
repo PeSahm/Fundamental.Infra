@@ -1,0 +1,48 @@
+{{/*
+=============================================================================
+Dedicated API Ingress
+=============================================================================
+Provides a separate domain for the backend API (e.g., api.academind.ir)
+without the /api path prefix. This is useful for:
+- Direct API access without path rewriting
+- Separate TLS certificate
+- Different rate limiting or CORS settings
+
+Traffic routing:
+- api.academind.ir/* → backend:8080/*
+=============================================================================
+*/}}
+{{- if and .Values.apiIngress.enabled .Values.backend.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "fundamental-stack.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.apiIngress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.apiIngress.className | default "public" }}
+  
+  {{- if .Values.apiIngress.tls.secretName }}
+  tls:
+    - hosts:
+        - {{ .Values.apiIngress.host | quote }}
+      secretName: {{ .Values.apiIngress.tls.secretName }}
+  {{- end }}
+  
+  rules:
+    - host: {{ .Values.apiIngress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "fundamental-stack.backend.fullname" . }}
+                port:
+                  number: {{ .Values.backend.service.port | default 80 }}
+{{- end }}

@@ -44,7 +44,8 @@ inputs = {
   # registry and argocd are shared between dev/prod
   # k8s is for Kubernetes Dashboard
   # sentry is for centralized error tracking (shared)
-  subdomains = ["dev", "dev-api", "argocd", "registry", "k8s", "sentry"]
+  # api is a dedicated backend API endpoint (separate from dev.academind.ir/api)
+  subdomains = ["dev", "api", "argocd", "registry", "k8s", "sentry"]
   
   # Enable Cloudflare proxy (orange cloud) for DDoS protection
   proxied = true

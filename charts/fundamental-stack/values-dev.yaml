@@ -176,6 +176,27 @@ ingress:
     - secretName: dev-academind-ir-tls
       hosts:
         - dev.academind.ir
+
+# =============================================================================
+# API Ingress (Development) - Dedicated API domain
+# =============================================================================
+# Provides api.academind.ir as a separate backend endpoint
+# No /api prefix needed - routes directly to backend
+apiIngress:
+  enabled: true
+  className: "public"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  host: "api.academind.ir"
+  tls:
+    secretName: api-academind-ir-tls
+
 # =============================================================================
 # PostgreSQL (Development)
 # =============================================================================
