@@ -183,6 +183,19 @@ spec:
           port: 6379
     {{- end }}
     
+    # Allow connection to Sentry for error tracking/APM
+    {{- if .Values.networkPolicies.sentryNamespace }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicies.sentryNamespace }}
+      ports:
+        - protocol: TCP
+          port: 9000  # Sentry web
+        - protocol: TCP
+          port: 3000  # Sentry relay
+    {{- end }}
+    
     # Allow external HTTPS (for external APIs, if needed)
     {{- if .Values.networkPolicies.allowExternalHttps }}
     - to:

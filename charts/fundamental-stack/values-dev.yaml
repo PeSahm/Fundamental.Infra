@@ -186,6 +186,8 @@ networkPolicies:
   ingressNamespace: "ingress"
   ingressControllerLabels:
     name: nginx-ingress-microk8s
+  # Allow backend to send errors/traces to Sentry
+  sentryNamespace: "sentry"
 # =============================================================================
 # Service Account (Development)
 # =============================================================================
