@@ -14,22 +14,17 @@
 global:
   imagePullSecrets:
     - name: registry-credentials
-  
   domain: "sahmbaz.ir"
   environment: "production"
-
 # =============================================================================
 # Backend (Production)
 # =============================================================================
 backend:
   replicaCount: 2
-  
   image:
     repository: registry.academind.ir/fundamental-backend
     tag: "prod-latest"
-  
   aspnetEnvironment: "Production"
-  
   resources:
     limits:
       cpu: 1000m
@@ -37,17 +32,14 @@ backend:
     requests:
       cpu: 200m
       memory: 512Mi
-  
   autoscaling:
     enabled: true
     minReplicas: 2
     maxReplicas: 5
     targetCPUUtilizationPercentage: 70
-  
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
-  
   # Sentry configuration for production
   env:
     - name: Sentry__Dsn
@@ -57,23 +49,19 @@ backend:
           key: dsn
     - name: SENTRY_RELEASE
       value: "fundamental-backend@prod"
-  
   secrets:
     existingSecret: "fundamental-backend-secrets"
     keys:
       jwtSecret: "jwt-secret"
       apiKey: "api-key"
-
 # =============================================================================
 # Frontend (Production)
 # =============================================================================
 frontend:
   replicaCount: 2
-  
   image:
     repository: registry.academind.ir/fundamental-frontend
-    tag: "prod-latest"
-  
+    tag: "1.0.0-20260212-81b3c59"
   resources:
     limits:
       cpu: 200m
@@ -81,19 +69,15 @@ frontend:
     requests:
       cpu: 100m
       memory: 128Mi
-  
   autoscaling:
     enabled: true
     minReplicas: 2
     maxReplicas: 5
     targetCPUUtilizationPercentage: 70
-  
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
-  
   apiBaseUrl: "/api"
-  
   # Sentry configuration for frontend
   env:
     - name: SENTRY_DSN
@@ -103,17 +87,14 @@ frontend:
           key: frontend-dsn
     - name: SENTRY_RELEASE
       value: "fundamental-angular-admin@prod"
-
 # =============================================================================
 # Migrator (Production)
 # =============================================================================
 migrator:
   enabled: true
-  
   image:
     repository: registry.academind.ir/fundamental-migrations
     tag: "prod-latest"
-  
   resources:
     limits:
       cpu: 500m
@@ -121,14 +102,12 @@ migrator:
     requests:
       cpu: 200m
       memory: 256Mi
-
 # =============================================================================
 # Ingress (Production) - sahmbaz.ir
 # =============================================================================
 ingress:
   enabled: true
   className: "public"
-  
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -137,7 +116,6 @@ ingress:
     nginx.ingress.kubernetes.io/hsts: "true"
     nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
     nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
-  
   hosts:
     - host: sahmbaz.ir
       paths:
@@ -147,33 +125,27 @@ ingress:
         - path: /api
           pathType: Prefix
           service: backend
-  
   tls:
     - secretName: sahmbaz-ir-tls
       hosts:
         - sahmbaz.ir
-
 # =============================================================================
 # PostgreSQL (Production)
 # =============================================================================
 postgresql:
   enabled: true
-  
   image:
     repository: postgres
     tag: "17-alpine"
-  
   auth:
     existingSecret: "postgresql-credentials"
     secretKeys:
       usernameKey: "username"
       passwordKey: "password"
     database: "fundamental_prod"
-  
   persistence:
     enabled: true
     size: 20Gi
-  
   resources:
     limits:
       cpu: 500m
@@ -181,26 +153,21 @@ postgresql:
     requests:
       cpu: 100m
       memory: 256Mi
-
 # =============================================================================
 # Redis (Production)
 # =============================================================================
 redis:
   enabled: true
-  
   image:
     repository: redis
     tag: "7-alpine"
-  
   auth:
     enabled: true
     existingSecret: "redis-credentials"
     existingSecretPasswordKey: "password"
-  
   persistence:
     enabled: true
     size: 5Gi
-  
   resources:
     limits:
       cpu: 200m
@@ -208,7 +175,6 @@ redis:
     requests:
       cpu: 50m
       memory: 128Mi
-
 # =============================================================================
 # Network Policies (Production)
 # =============================================================================
@@ -217,7 +183,6 @@ networkPolicies:
   ingressNamespace: "ingress"
   ingressControllerLabels:
     name: nginx-ingress-microk8s
-
 # =============================================================================
 # Service Account (Production)
 # =============================================================================
