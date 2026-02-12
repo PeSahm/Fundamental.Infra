@@ -190,6 +190,55 @@ shared:
     redis_image: "redis:7-alpine"
 
 # -----------------------------------------------------------------------------
+# Cluster Configuration (Multi-Node Support)
+# -----------------------------------------------------------------------------
+cluster:
+  # Control plane node (first node, runs shared services)
+  control_plane:
+    ip: "5.10.248.55"
+    hostname: "seller-market-linux-vps"
+
+  # Worker nodes (add here when scaling out)
+  workers: []
+  # Future example:
+  # workers:
+  #   - ip: "10.0.0.2"
+  #     hostname: "worker-1"
+  #   - ip: "10.0.0.3"
+  #     hostname: "worker-2"
+
+  # Storage class (change to "longhorn" when adding workers)
+  storage_class: "microk8s-hostpath"
+
+  # MicroK8s channel
+  microk8s_channel: "1.28/stable"
+
+  # Inter-node networking (UFW rules for clustering)
+  networking:
+    pod_cidr: "10.1.0.0/16"
+    service_cidr: "10.152.183.0/24"
+    inter_node_ports:
+      - { port: 16443, proto: "tcp", comment: "MicroK8s API Server" }
+      - { port: 10250, proto: "tcp", comment: "Kubelet" }
+      - { port: 25000, proto: "tcp", comment: "MicroK8s cluster agent" }
+      - { port: 19001, proto: "tcp", comment: "Dqlite" }
+      - { port: 4789, proto: "udp", comment: "Calico VXLAN" }
+
+  # Firewall rules (all ports that should be open)
+  ufw_rules:
+    - { port: 22, proto: "tcp", comment: "SSH" }
+    - { port: 80, proto: "tcp", comment: "HTTP" }
+    - { port: 443, proto: "tcp", comment: "HTTPS" }
+    - { port: 10250, proto: "tcp", comment: "Kubelet" }
+
+  # Backup configuration
+  backup:
+    enabled: true
+    directory: "/root/backups"
+    retention_days: 7
+    schedule: "daily"  # systemd timer
+
+# -----------------------------------------------------------------------------
 # Cloudflare Configuration
 # -----------------------------------------------------------------------------
 cloudflare:

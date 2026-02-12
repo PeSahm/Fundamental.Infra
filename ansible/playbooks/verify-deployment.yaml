@@ -1,0 +1,199 @@
+---
+# Verify Deployment Playbook
+# ===========================
+# Runs health checks on all deployed components.
+# Use after bootstrap or any deployment to verify everything is working.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/verify-deployment.yaml
+
+- name: Verify Fundamental Platform Deployment
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    checks_passed: 0
+    checks_failed: 0
+    check_results: []
+
+  tasks:
+    # =========================================================================
+    # Kubernetes Cluster Health
+    # =========================================================================
+    - name: Check MicroK8s is running
+      ansible.builtin.command: microk8s status --wait-ready --timeout 30
+      register: microk8s_status
+      changed_when: false
+      failed_when: false
+
+    - name: Record MicroK8s status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'MicroK8s', 'status': 'PASS' if microk8s_status.rc == 0 else 'FAIL'}] }}"
+
+    - name: Check all nodes are Ready
+      ansible.builtin.command: microk8s kubectl get nodes -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
+      register: node_status
+      changed_when: false
+      failed_when: false
+
+    - name: Record node status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'Nodes Ready', 'status': 'PASS' if 'False' not in node_status.stdout else 'FAIL'}] }}"
+
+    # =========================================================================
+    # Core Services
+    # =========================================================================
+    - name: Check ArgoCD pods
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n argocd --no-headers | grep -v Running | grep -v Completed | wc -l
+      register: argocd_unhealthy
+      changed_when: false
+      failed_when: false
+
+    - name: Record ArgoCD status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'ArgoCD', 'status': 'PASS' if argocd_unhealthy.stdout | trim == '0' else 'FAIL (' + argocd_unhealthy.stdout | trim + ' unhealthy)'}] }}"
+
+    - name: Check cert-manager pods
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n cert-manager --no-headers | grep -v Running | wc -l
+      register: certmgr_unhealthy
+      changed_when: false
+      failed_when: false
+
+    - name: Record cert-manager status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'cert-manager', 'status': 'PASS' if certmgr_unhealthy.stdout | trim == '0' else 'FAIL'}] }}"
+
+    - name: Check container registry
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n container-registry --no-headers | grep -v Running | wc -l
+      register: registry_unhealthy
+      changed_when: false
+      failed_when: false
+
+    - name: Record registry status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'Container Registry', 'status': 'PASS' if registry_unhealthy.stdout | trim == '0' else 'FAIL'}] }}"
+
+    # =========================================================================
+    # Application Namespaces
+    # =========================================================================
+    - name: Check fundamental-dev pods
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n fundamental-dev --no-headers 2>/dev/null | grep -v Running | grep -v Completed | wc -l
+      register: dev_unhealthy
+      changed_when: false
+      failed_when: false
+
+    - name: Record dev namespace status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'fundamental-dev', 'status': 'PASS' if dev_unhealthy.stdout | trim == '0' else 'FAIL (' + dev_unhealthy.stdout | trim + ' unhealthy)'}] }}"
+
+    - name: Check fundamental-prod pods
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n fundamental-prod --no-headers 2>/dev/null | grep -v Running | grep -v Completed | wc -l
+      register: prod_unhealthy
+      changed_when: false
+      failed_when: false
+
+    - name: Record prod namespace status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'fundamental-prod', 'status': 'PASS' if prod_unhealthy.stdout | trim == '0' else 'WARN (empty or unhealthy)'}] }}"
+
+    # =========================================================================
+    # ArgoCD Application Sync Status
+    # =========================================================================
+    - name: Check ArgoCD app sync status
+      ansible.builtin.shell: |
+        microk8s kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}={.status.health.status},{.status.sync.status}{"\n"}{end}' 2>/dev/null
+      register: argocd_apps
+      changed_when: false
+      failed_when: false
+
+    - name: Record ArgoCD apps
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'ArgoCD Apps', 'status': argocd_apps.stdout | default('No apps found')}] }}"
+
+    # =========================================================================
+    # TLS Certificates
+    # =========================================================================
+    - name: Check TLS certificates
+      ansible.builtin.shell: |
+        microk8s kubectl get certificates -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}={.status.conditions[0].status}{"\n"}{end}' 2>/dev/null
+      register: certs
+      changed_when: false
+      failed_when: false
+
+    - name: Count valid certificates
+      ansible.builtin.shell: |
+        microk8s kubectl get certificates -A --no-headers 2>/dev/null | grep -c True || echo "0"
+      register: valid_certs
+      changed_when: false
+      failed_when: false
+
+    - name: Record certificate status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'TLS Certificates', 'status': valid_certs.stdout | trim + ' valid'}] }}"
+
+    # =========================================================================
+    # HTTP Endpoint Checks
+    # =========================================================================
+    - name: Check dev frontend (dev.academind.ir)
+      ansible.builtin.uri:
+        url: "https://dev.academind.ir"
+        method: GET
+        validate_certs: false
+        timeout: 10
+        status_code: [200, 301, 302]
+      register: dev_frontend
+      failed_when: false
+
+    - name: Record dev frontend status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'dev.academind.ir', 'status': 'PASS (HTTP ' + (dev_frontend.status | string) + ')' if dev_frontend.status is defined and dev_frontend.status in [200, 301, 302] else 'FAIL'}] }}"
+
+    - name: Check ArgoCD UI (argocd.academind.ir)
+      ansible.builtin.uri:
+        url: "https://argocd.academind.ir"
+        method: GET
+        validate_certs: false
+        timeout: 10
+        status_code: [200, 301, 302]
+      register: argocd_ui
+      failed_when: false
+
+    - name: Record ArgoCD UI status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'argocd.academind.ir', 'status': 'PASS' if argocd_ui.status is defined and argocd_ui.status in [200, 301, 302] else 'FAIL'}] }}"
+
+    # =========================================================================
+    # Sentry
+    # =========================================================================
+    - name: Check Sentry pods
+      ansible.builtin.shell: |
+        microk8s kubectl get pods -n sentry --no-headers 2>/dev/null | grep -cE 'CrashLoopBackOff|Error|Unknown' || echo "0"
+      register: sentry_unhealthy
+      changed_when: false
+      failed_when: false
+
+    - name: Record Sentry status
+      ansible.builtin.set_fact:
+        check_results: "{{ check_results + [{'name': 'Sentry', 'status': 'PASS' if sentry_unhealthy.stdout | trim == '0' else 'WARN (' + sentry_unhealthy.stdout | trim + ' unhealthy pods)'}] }}"
+
+    # =========================================================================
+    # Summary Report
+    # =========================================================================
+    - name: Display verification report
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════╗
+          ║          DEPLOYMENT VERIFICATION REPORT              ║
+          ╚══════════════════════════════════════════════════════╝
+
+          {% for check in check_results %}
+          {{ '%-25s' | format(check.name) }} {{ check.status }}
+          {% endfor %}
+
+          Timestamp: {{ ansible_date_time.iso8601 | default('N/A') }}
