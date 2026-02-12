@@ -1,0 +1,100 @@
+---
+# Database Backup Playbook
+# ========================
+# Backs up PostgreSQL databases for both dev and prod environments.
+# Stores backups in /root/backups/ with automatic retention cleanup.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/backup-database.yaml
+#   ansible-playbook -i inventory/hosts.ini playbooks/backup-database.yaml -e "target_env=dev"
+#   ansible-playbook -i inventory/hosts.ini playbooks/backup-database.yaml -e "target_env=prod"
+#
+# Download backups to local machine:
+#   scp root@5.10.248.55:/root/backups/latest-*.sql.gz ./
+
+- name: Backup PostgreSQL Databases
+  hosts: control_plane
+  become: true
+  gather_facts: true
+
+  vars:
+    backup_dir: "/root/backups"
+    retention_days: 7
+    target_env: "all"  # all, dev, or prod
+    timestamp: "{{ ansible_date_time.date }}-{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+
+    environments:
+      - name: dev
+        namespace: fundamental-dev
+        database: fundamental_dev
+        pod_label: "app.kubernetes.io/component=postgresql"
+      - name: prod
+        namespace: fundamental-prod
+        database: fundamental_prod
+        pod_label: "app.kubernetes.io/component=postgresql"
+
+  tasks:
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Backup databases
+      ansible.builtin.shell: |
+        # Find PostgreSQL pod
+        POD=$(microk8s kubectl get pods -n {{ item.namespace }} -l {{ item.pod_label }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -z "$POD" ]; then
+          echo "SKIP: No PostgreSQL pod found in {{ item.namespace }}"
+          exit 0
+        fi
+
+        # Get credentials
+        DB_USER=$(microk8s kubectl get secret -n {{ item.namespace }} postgresql-credentials -o jsonpath='{.data.username}' | base64 -d)
+        DB_PASS=$(microk8s kubectl get secret -n {{ item.namespace }} postgresql-credentials -o jsonpath='{.data.password}' | base64 -d)
+
+        # Run pg_dump
+        BACKUP_FILE="{{ backup_dir }}/{{ item.name }}-{{ item.database }}-{{ timestamp }}.sql.gz"
+        microk8s kubectl exec -n {{ item.namespace }} "$POD" -- \
+          pg_dump -U "$DB_USER" -d {{ item.database }} --format=custom --compress=6 \
+          > "$BACKUP_FILE" 2>/dev/null
+
+        if [ $? -eq 0 ] && [ -s "$BACKUP_FILE" ]; then
+          SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+          echo "OK: Backed up {{ item.database }} ($SIZE) -> $BACKUP_FILE"
+          # Create/update latest symlink
+          ln -sf "$BACKUP_FILE" "{{ backup_dir }}/latest-{{ item.name }}.sql.gz"
+        else
+          rm -f "$BACKUP_FILE"
+          echo "FAIL: Backup of {{ item.database }} failed"
+          exit 1
+        fi
+      register: backup_result
+      changed_when: "'OK:' in backup_result.stdout"
+      failed_when: "'FAIL:' in backup_result.stdout"
+      loop: "{{ environments }}"
+      when: target_env == 'all' or target_env == item.name
+
+    - name: Clean up old backups (retention policy)
+      ansible.builtin.shell: |
+        find {{ backup_dir }} -name "*.sql.gz" -mtime +{{ retention_days }} -not -name "latest-*" -delete 2>/dev/null
+        REMAINING=$(ls -1 {{ backup_dir }}/*.sql.gz 2>/dev/null | wc -l)
+        echo "Cleanup done. $REMAINING backup files remaining."
+      register: cleanup_result
+      changed_when: false
+
+    - name: List current backups
+      ansible.builtin.shell: |
+        ls -lhS {{ backup_dir }}/*.sql.gz 2>/dev/null || echo "No backups found"
+      register: backup_list
+      changed_when: false
+
+    - name: Display backup summary
+      ansible.builtin.debug:
+        msg: |
+          Backup Summary:
+          {{ backup_list.stdout }}
+
+          Download to local machine:
+            scp root@{{ ansible_host }}:{{ backup_dir }}/latest-dev.sql.gz ./
+            scp root@{{ ansible_host }}:{{ backup_dir }}/latest-prod.sql.gz ./

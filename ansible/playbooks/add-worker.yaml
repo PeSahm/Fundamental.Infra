@@ -1,0 +1,162 @@
+---
+# Add Worker Node Playbook
+# ========================
+# Adds a new worker node to the MicroK8s cluster.
+# Run from the control plane node.
+#
+# Usage:
+#   # Step 1: Generate join token on control plane
+#   ansible-playbook -i inventory/hosts.ini playbooks/add-worker.yaml \
+#     -e "worker_ip=10.0.0.2" -e "worker_hostname=worker-1"
+#
+#   # This playbook will:
+#   # 1. Generate a join token on the control plane
+#   # 2. SSH to the worker, install MicroK8s, and join the cluster
+#   # 3. Configure UFW on both nodes for inter-node traffic
+#   # 4. Label the worker node for workload scheduling
+#
+# Prerequisites:
+#   - SSH access from control plane to worker node (root)
+#   - Worker node runs Ubuntu 22.04+
+#   - Worker node has internet access for snap install
+
+- name: Add Worker Node to MicroK8s Cluster
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    worker_ip: ""       # REQUIRED: IP of the new worker
+    worker_hostname: "" # REQUIRED: hostname for the worker
+    microk8s_channel: "1.28/stable"
+
+    # Inter-node ports (from config.yaml)
+    inter_node_ports:
+      - { port: 16443, proto: "tcp", comment: "MicroK8s API Server" }
+      - { port: 10250, proto: "tcp", comment: "Kubelet" }
+      - { port: 25000, proto: "tcp", comment: "MicroK8s cluster agent" }
+      - { port: 19001, proto: "tcp", comment: "Dqlite" }
+      - { port: 4789, proto: "udp", comment: "Calico VXLAN" }
+
+  pre_tasks:
+    - name: Validate required parameters
+      ansible.builtin.fail:
+        msg: "Both worker_ip and worker_hostname are required. Use -e 'worker_ip=X.X.X.X' -e 'worker_hostname=worker-1'"
+      when: worker_ip == '' or worker_hostname == ''
+
+    - name: Test SSH connectivity to worker
+      ansible.builtin.command:
+        cmd: ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 root@{{ worker_ip }} "echo OK"
+      register: ssh_test
+      failed_when: ssh_test.rc != 0
+      changed_when: false
+
+  tasks:
+    # =========================================================================
+    # Step 1: Prepare worker node
+    # =========================================================================
+    - name: Install MicroK8s on worker
+      ansible.builtin.shell: |
+        ssh root@{{ worker_ip }} 'bash -s' <<'REMOTE_SCRIPT'
+        set -euo pipefail
+
+        echo "=== Installing dependencies ==="
+        apt-get update -qq
+        apt-get install -y -qq snapd curl
+
+        echo "=== Installing MicroK8s ==="
+        snap install microk8s --classic --channel={{ microk8s_channel }}
+        microk8s status --wait-ready --timeout 120
+
+        echo "=== MicroK8s installed ==="
+        microk8s version
+        REMOTE_SCRIPT
+      register: worker_install
+      changed_when: "'MicroK8s installed' in worker_install.stdout"
+
+    # =========================================================================
+    # Step 2: Generate join token and join cluster
+    # =========================================================================
+    - name: Generate join token on control plane
+      ansible.builtin.command:
+        cmd: microk8s add-node --format short
+      register: join_output
+      changed_when: false
+
+    - name: Extract join command
+      ansible.builtin.set_fact:
+        join_command: "{{ join_output.stdout_lines | select('match', '^microk8s join') | first }}"
+
+    - name: Display join command
+      ansible.builtin.debug:
+        msg: "Join command: {{ join_command }}"
+
+    - name: Join worker to cluster
+      ansible.builtin.shell: |
+        ssh root@{{ worker_ip }} '{{ join_command }} --worker'
+      register: join_result
+
+    - name: Wait for node to appear in cluster
+      ansible.builtin.shell: |
+        for i in $(seq 1 30); do
+          if microk8s kubectl get nodes | grep -q "{{ worker_hostname }}"; then
+            echo "Node {{ worker_hostname }} joined successfully"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "TIMEOUT: Node did not appear in cluster after 150s"
+        exit 1
+      register: node_check
+      changed_when: false
+
+    # =========================================================================
+    # Step 3: Configure UFW for inter-node traffic
+    # =========================================================================
+    - name: Configure UFW on control plane for worker
+      ansible.builtin.shell: |
+        ufw allow from {{ worker_ip }} to any port {{ item.port }} proto {{ item.proto }} comment "{{ item.comment }} ({{ worker_hostname }})"
+      loop: "{{ inter_node_ports }}"
+      changed_when: true
+
+    - name: Configure UFW on worker for control plane
+      ansible.builtin.shell: |
+        CONTROL_IP=$(hostname -I | awk '{print $1}')
+        ssh root@{{ worker_ip }} "ufw allow from $CONTROL_IP to any port {{ item.port }} proto {{ item.proto }} comment '{{ item.comment }} (control-plane)'"
+      loop: "{{ inter_node_ports }}"
+      changed_when: true
+
+    - name: Enable UFW on worker
+      ansible.builtin.shell: |
+        ssh root@{{ worker_ip }} 'ufw --force enable && ufw allow 22/tcp comment "SSH"'
+      changed_when: true
+
+    # =========================================================================
+    # Step 4: Label and verify worker node
+    # =========================================================================
+    - name: Label worker node
+      ansible.builtin.shell: |
+        microk8s kubectl label node {{ worker_hostname }} node-role.kubernetes.io/worker=worker --overwrite
+        microk8s kubectl label node {{ worker_hostname }} fundamental/role=worker --overwrite
+      changed_when: true
+
+    - name: Verify cluster status
+      ansible.builtin.shell: |
+        microk8s kubectl get nodes -o wide
+      register: cluster_status
+      changed_when: false
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: |
+          Worker node added successfully!
+
+          Cluster nodes:
+          {{ cluster_status.stdout }}
+
+          Next steps:
+            1. Update config.yaml with the new worker node
+            2. Run ./scripts/generate-config.sh to regenerate configs
+            3. Update inventory/hosts.ini with the new worker
+            4. Consider migrating storage from hostpath to distributed (longhorn)
+               if this is your second node

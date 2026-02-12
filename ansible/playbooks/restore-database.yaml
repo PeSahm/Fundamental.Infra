@@ -1,0 +1,101 @@
+---
+# Database Restore Playbook
+# =========================
+# Restores a PostgreSQL database from a backup file.
+#
+# Usage:
+#   # Restore dev from latest backup
+#   ansible-playbook -i inventory/hosts.ini playbooks/restore-database.yaml \
+#     -e "target_env=dev"
+#
+#   # Restore from specific backup file
+#   ansible-playbook -i inventory/hosts.ini playbooks/restore-database.yaml \
+#     -e "target_env=dev" -e "backup_file=/root/backups/dev-fundamental_dev-20260212-1430.sql.gz"
+#
+# WARNING: This will DROP and recreate the target database!
+
+- name: Restore PostgreSQL Database
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    backup_dir: "/root/backups"
+    target_env: ""  # REQUIRED: dev or prod
+    backup_file: ""  # Optional: specific backup file, defaults to latest
+
+    env_config:
+      dev:
+        namespace: fundamental-dev
+        database: fundamental_dev
+        pod_label: "app.kubernetes.io/component=postgresql"
+      prod:
+        namespace: fundamental-prod
+        database: fundamental_prod
+        pod_label: "app.kubernetes.io/component=postgresql"
+
+  pre_tasks:
+    - name: Validate target_env is specified
+      ansible.builtin.fail:
+        msg: "target_env is required. Use -e 'target_env=dev' or -e 'target_env=prod'"
+      when: target_env not in ['dev', 'prod']
+
+    - name: Set environment config
+      ansible.builtin.set_fact:
+        env: "{{ env_config[target_env] }}"
+
+    - name: Determine backup file
+      ansible.builtin.set_fact:
+        restore_file: "{{ backup_file if backup_file != '' else backup_dir + '/latest-' + target_env + '.sql.gz' }}"
+
+    - name: Check backup file exists
+      ansible.builtin.stat:
+        path: "{{ restore_file }}"
+      register: backup_stat
+
+    - name: Fail if backup file not found
+      ansible.builtin.fail:
+        msg: "Backup file not found: {{ restore_file }}"
+      when: not backup_stat.stat.exists
+
+    - name: Display warning
+      ansible.builtin.debug:
+        msg: |
+          WARNING: This will restore database {{ env.database }} in namespace {{ env.namespace }}
+          from backup: {{ restore_file }} ({{ backup_stat.stat.size | human_readable }})
+
+          This operation will REPLACE all data in the target database.
+
+  tasks:
+    - name: Restore database from backup
+      ansible.builtin.shell: |
+        # Find PostgreSQL pod
+        POD=$(microk8s kubectl get pods -n {{ env.namespace }} -l {{ env.pod_label }} -o jsonpath='{.items[0].metadata.name}')
+        if [ -z "$POD" ]; then
+          echo "FAIL: No PostgreSQL pod found in {{ env.namespace }}"
+          exit 1
+        fi
+
+        # Get credentials
+        DB_USER=$(microk8s kubectl get secret -n {{ env.namespace }} postgresql-credentials -o jsonpath='{.data.username}' | base64 -d)
+
+        # Restore using pg_restore
+        cat "{{ restore_file }}" | microk8s kubectl exec -i -n {{ env.namespace }} "$POD" -- \
+          pg_restore -U "$DB_USER" -d {{ env.database }} --clean --if-exists --no-owner 2>&1
+
+        echo "Restore completed for {{ env.database }}"
+      register: restore_result
+
+    - name: Restart backend to pick up restored data
+      ansible.builtin.shell: |
+        microk8s kubectl rollout restart deployment -n {{ env.namespace }} -l app.kubernetes.io/component=backend 2>/dev/null || true
+      changed_when: false
+
+    - name: Display restore result
+      ansible.builtin.debug:
+        msg: |
+          Restore completed:
+            Environment: {{ target_env }}
+            Database: {{ env.database }}
+            Backup file: {{ restore_file }}
+            Backend restarted: yes
