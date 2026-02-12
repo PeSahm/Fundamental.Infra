@@ -328,10 +328,16 @@ if [[ $START_STEP -le 2 ]]; then
     fi
     log "GitHub token is valid"
 
+    # Export Terragrunt-compatible env vars (used by terragrunt apply)
+    export CLOUDFLARE_API_TOKEN_DEV="$CLOUDFLARE_API_TOKEN"
+    export CLOUDFLARE_API_TOKEN_PROD="$CLOUDFLARE_API_TOKEN"
+
     # Save credentials for future runs
     cat > "$CREDENTIALS_DIR/bootstrap-env" << EOF
 # Bootstrap credentials - generated $(date -Iseconds)
 export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN"
+export CLOUDFLARE_API_TOKEN_DEV="$CLOUDFLARE_API_TOKEN"
+export CLOUDFLARE_API_TOKEN_PROD="$CLOUDFLARE_API_TOKEN"
 export CLOUDFLARE_ZONE_ID_DEV="$CLOUDFLARE_ZONE_ID_DEV"
 export CLOUDFLARE_ZONE_ID_PROD="$CLOUDFLARE_ZONE_ID_PROD"
 export GITHUB_TOKEN="$GITHUB_TOKEN"
@@ -342,11 +348,83 @@ EOF
 fi
 
 # =============================================================================
-# Step 3: Generate Configuration
+# Step 3: Configure DNS (Cloudflare)
 # =============================================================================
 
 if [[ $START_STEP -le 3 ]]; then
-    step 3 "Generate Configuration"
+    step 3 "Configure DNS"
+
+    VPS_IP=$(curl -s ifconfig.me 2>/dev/null || echo "5.10.248.55")
+    log "VPS IP: $VPS_IP"
+
+    # Configure DNS records via Cloudflare API
+    # Proxy is DISABLED because Cloudflare proxy cannot reliably reach Iran-based VPS
+    configure_dns() {
+        local zone_id="$1"
+        local domain="$2"
+        shift 2
+        local subdomains=("$@")
+
+        log "Configuring DNS for $domain (zone: $zone_id)..."
+
+        # Create/update root domain record
+        local existing
+        existing=$(curl -s "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records?type=A&name=$domain" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[0].id // empty')
+
+        if [ -n "$existing" ]; then
+            curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records/$existing" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"content\":\"$VPS_IP\",\"proxied\":false,\"ttl\":300}" >/dev/null
+            log "  Updated: $domain -> $VPS_IP"
+        else
+            curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "{\"type\":\"A\",\"name\":\"@\",\"content\":\"$VPS_IP\",\"proxied\":false,\"ttl\":300}" >/dev/null
+            log "  Created: $domain -> $VPS_IP"
+        fi
+
+        # Create/update subdomain records
+        for sub in "${subdomains[@]}"; do
+            local fqdn="$sub.$domain"
+            existing=$(curl -s "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records?type=A&name=$fqdn" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[0].id // empty')
+
+            if [ -n "$existing" ]; then
+                curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records/$existing" \
+                    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                    -H "Content-Type: application/json" \
+                    --data "{\"content\":\"$VPS_IP\",\"proxied\":false,\"ttl\":300}" >/dev/null
+                log "  Updated: $fqdn -> $VPS_IP"
+            else
+                curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
+                    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                    -H "Content-Type: application/json" \
+                    --data "{\"type\":\"A\",\"name\":\"$sub\",\"content\":\"$VPS_IP\",\"proxied\":false,\"ttl\":300}" >/dev/null
+                log "  Created: $fqdn -> $VPS_IP"
+            fi
+        done
+    }
+
+    if [[ "$ENV_FILTER" == "all" || "$ENV_FILTER" == "dev" ]]; then
+        configure_dns "$CLOUDFLARE_ZONE_ID_DEV" "academind.ir" "dev" "api" "argocd" "registry" "k8s" "sentry"
+    fi
+
+    if [[ "$ENV_FILTER" == "all" || "$ENV_FILTER" == "prod" ]]; then
+        configure_dns "$CLOUDFLARE_ZONE_ID_PROD" "sahmbaz.ir" "www" "api"
+    fi
+
+    log "DNS configured"
+fi
+
+# =============================================================================
+# Step 4: Generate Configuration
+# =============================================================================
+
+if [[ $START_STEP -le 4 ]]; then
+    step 4 "Generate Configuration"
 
     cd "$INFRA_DIR"
 
@@ -396,43 +474,43 @@ run_playbook() {
     fi
 }
 
-if [[ $START_STEP -le 4 ]]; then
-    step 4 "Setup VPS Infrastructure"
+if [[ $START_STEP -le 5 ]]; then
+    step 5 "Setup VPS Infrastructure"
     run_playbook "setup-vps.yaml" || warn "VPS setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 5 ]]; then
-    step 5 "Setup Container Registry"
+if [[ $START_STEP -le 6 ]]; then
+    step 6 "Setup Container Registry"
     run_playbook "setup-registry-proxy.yaml" || warn "Registry setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 6 ]]; then
-    step 6 "Setup Cert-Manager"
+if [[ $START_STEP -le 7 ]]; then
+    step 7 "Setup Cert-Manager"
     run_playbook "setup-cert-manager.yaml" || warn "Cert-manager setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 7 ]]; then
-    step 7 "Create Kubernetes Secrets"
+if [[ $START_STEP -le 8 ]]; then
+    step 8 "Create Kubernetes Secrets"
     run_playbook "setup-kubernetes-secrets.yaml" || warn "Secrets setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 8 ]]; then
-    step 8 "Install ArgoCD"
+if [[ $START_STEP -le 9 ]]; then
+    step 9 "Install ArgoCD"
     run_playbook "setup-argocd.yaml" || warn "ArgoCD setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 9 ]]; then
-    step 9 "Install Kubernetes Dashboard"
+if [[ $START_STEP -le 10 ]]; then
+    step 10 "Install Kubernetes Dashboard"
     run_playbook "setup-kubernetes-dashboard.yaml" || warn "Dashboard setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 10 && "$SKIP_SENTRY" != true ]]; then
-    step 10 "Deploy Sentry"
+if [[ $START_STEP -le 11 && "$SKIP_SENTRY" != true ]]; then
+    step 11 "Deploy Sentry"
     run_playbook "deploy-sentry.yaml" || warn "Sentry setup had issues, continuing..."
 fi
 
-if [[ $START_STEP -le 11 ]]; then
-    step 11 "Setup GitHub Actions Runner"
+if [[ $START_STEP -le 12 ]]; then
+    step 12 "Setup GitHub Actions Runner"
 
     # Auto-generate runner registration token
     log "Generating GitHub runner registration token..."
@@ -448,20 +526,26 @@ if [[ $START_STEP -le 11 ]]; then
     fi
 fi
 
-if [[ $START_STEP -le 12 ]]; then
-    step 12 "Deploy Applications"
+if [[ $START_STEP -le 13 ]]; then
+    step 13 "Deploy Applications"
     run_playbook "deploy-applications.yaml" || warn "App deployment had issues, continuing..."
 fi
 
 # =============================================================================
-# Step 13: Configure GitHub Secrets
+# Step 14: Configure GitHub Secrets
 # =============================================================================
 
-if [[ $START_STEP -le 13 ]]; then
-    step 13 "Configure GitHub Secrets"
+if [[ $START_STEP -le 14 ]]; then
+    step 14 "Configure GitHub Secrets"
 
     VPS_IP=$(yq '.shared.vps.ip' "$INFRA_DIR/config.yaml" 2>/dev/null || echo "5.10.248.55")
     REGISTRY_USERNAME=$(yq '.shared.registry.username' "$INFRA_DIR/config.yaml" 2>/dev/null || echo "fundamental")
+
+    # Read Sentry auth token if available
+    SENTRY_AUTH_TOKEN=""
+    if [ -f "$CREDENTIALS_DIR/sentry-credentials.txt" ]; then
+        SENTRY_AUTH_TOKEN=$(grep "Auth Token:" "$CREDENTIALS_DIR/sentry-credentials.txt" | head -1 | awk '{print $NF}' || echo "")
+    fi
 
     for REPO in "Fundamental.Backend" "Fundamental.FrontEnd"; do
         log "Setting secrets for PeSahm/$REPO..."
@@ -474,6 +558,11 @@ if [[ $START_STEP -le 13 ]]; then
         # Set INFRA_REPO_TOKEN for triggering Infra workflows
         gh secret set INFRA_REPO_TOKEN --repo "PeSahm/$REPO" --body "$GITHUB_TOKEN" 2>/dev/null || true
 
+        # Set Sentry token if available (generated by deploy-sentry.yaml)
+        if [ -n "$SENTRY_AUTH_TOKEN" ]; then
+            gh secret set SENTRY_AUTH_TOKEN --repo "PeSahm/$REPO" --body "$SENTRY_AUTH_TOKEN" 2>/dev/null || true
+        fi
+
         log "Secrets set for $REPO"
     done
 fi
@@ -482,8 +571,8 @@ fi
 # Step 14: Trigger Initial CI/CD Builds
 # =============================================================================
 
-if [[ $START_STEP -le 14 ]]; then
-    step 14 "Trigger Initial CI/CD Builds"
+if [[ $START_STEP -le 15 ]]; then
+    step 15 "Trigger Initial CI/CD Builds"
 
     if [[ "$ENV_FILTER" == "all" || "$ENV_FILTER" == "dev" ]]; then
         log "Triggering dev builds..."
@@ -508,8 +597,8 @@ fi
 # Step 15: Generate Worker Join Token
 # =============================================================================
 
-if [[ $START_STEP -le 15 ]]; then
-    step 15 "Generate Worker Join Command"
+if [[ $START_STEP -le 16 ]]; then
+    step 16 "Generate Worker Join Command"
 
     if check_command microk8s; then
         JOIN_CMD=$(microk8s add-node --token-ttl 86400 2>/dev/null | grep "microk8s join" | head -1 || echo "")
@@ -526,8 +615,8 @@ fi
 # Step 16: Verify Deployment
 # =============================================================================
 
-if [[ $START_STEP -le 16 ]]; then
-    step 16 "Verify Deployment"
+if [[ $START_STEP -le 17 ]]; then
+    step 17 "Verify Deployment"
 
     if [ -f "$PLAYBOOKS_DIR/verify-deployment.yaml" ]; then
         run_playbook "verify-deployment.yaml" || warn "Some verification checks failed"

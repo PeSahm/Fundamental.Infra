@@ -276,6 +276,25 @@
       retries: 5
       delay: 30
 
+    - name: Create required Kafka topics
+      shell: |
+        POD=$(microk8s kubectl get pod -l app=sentry-kafka -n {{ sentry_namespace }} -o jsonpath='{.items[0].metadata.name}')
+        for topic in events ingest-attachments ingest-transactions ingest-events \
+                     ingest-replay-events outcomes outcomes-billing \
+                     snuba-dead-letter-inserts snuba-commit-log sessions \
+                     generic-events transactions profiles ingest-occurrences \
+                     snuba-generic-events-commit-log snuba-sessions-commit-log \
+                     snuba-transactions-commit-log; do
+          microk8s kubectl exec $POD -n {{ sentry_namespace }} -- \
+            kafka-topics --create --topic $topic \
+            --partitions 1 --replication-factor 1 \
+            --bootstrap-server localhost:9092 --if-not-exists 2>/dev/null || true
+        done
+        echo "Kafka topics created"
+      changed_when: false
+      retries: 3
+      delay: 10
+
     - name: Wait for Sentry web pod to be ready (needs it for migrations)
       shell: |
         microk8s kubectl wait --for=condition=ready pod -l app=sentry-web -n {{ sentry_namespace }} --timeout=300s

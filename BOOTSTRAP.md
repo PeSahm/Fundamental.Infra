@@ -65,22 +65,24 @@ chmod +x scripts/bootstrap.sh
 
 | Step | Action | Duration |
 |------|--------|----------|
-| 0 | Validate prerequisites (tokens, tools) | ~10s |
-| 1 | Install system dependencies (snapd, MicroK8s, Ansible, gh CLI) | ~5min |
-| 2 | Configure Cloudflare DNS (auto-discover zone IDs, create A records) | ~30s |
-| 3 | Configure GitHub secrets (registry creds, tokens) | ~30s |
-| 4 | Set up MicroK8s with addons (dns, ingress, hostpath-storage, cert-manager) | ~3min |
-| 5 | Set up container registry (nginx proxy, basic auth, TLS) | ~2min |
-| 6 | Set up cert-manager + Let's Encrypt cluster issuer | ~1min |
-| 7 | Create Kubernetes secrets (DB passwords, JWT keys, registry creds) | ~30s |
-| 8 | Install ArgoCD | ~2min |
-| 9 | Install Kubernetes Dashboard | ~1min |
-| 10 | Deploy Sentry (optional, skip with `--skip-sentry`) | ~5min |
-| 11 | Set up GitHub Actions self-hosted runner | ~2min |
-| 12 | Deploy applications via ArgoCD (dev + prod) | ~2min |
-| 13 | Trigger initial CI/CD builds (Backend + Frontend) | ~1min |
-| 14 | Run health checks | ~30s |
-| 15 | Print credentials + URLs summary | ~5s |
+| 0 | Validate prerequisites (root, OS) | ~10s |
+| 1 | Install system dependencies (yq, Ansible, gh CLI) | ~5min |
+| 2 | Gather credentials (Cloudflare token, GitHub PAT, auto-discover zone IDs) | ~30s |
+| 3 | Configure DNS via Cloudflare API (A records, proxy disabled) | ~30s |
+| 4 | Generate configuration (config.yaml → terragrunt.hcl) | ~10s |
+| 5 | Set up VPS infrastructure (MicroK8s, UFW, Docker) | ~3min |
+| 6 | Set up container registry (nginx proxy, basic auth, TLS) | ~2min |
+| 7 | Set up cert-manager + Let's Encrypt cluster issuer | ~1min |
+| 8 | Create Kubernetes secrets (DB passwords, JWT keys, registry creds) | ~30s |
+| 9 | Install ArgoCD | ~2min |
+| 10 | Install Kubernetes Dashboard | ~1min |
+| 11 | Deploy Sentry (optional, skip with `--skip-sentry`) | ~5min |
+| 12 | Set up GitHub Actions self-hosted runner | ~2min |
+| 13 | Deploy applications via ArgoCD (dev + prod) | ~2min |
+| 14 | Configure GitHub secrets (registry, Sentry token, INFRA_REPO_TOKEN) | ~30s |
+| 15 | Trigger initial CI/CD builds (Backend + Frontend) | ~1min |
+| 16 | Generate worker join token | ~10s |
+| 17 | Verify deployment (health checks) | ~30s |
 
 **Total: ~25 minutes**
 
@@ -115,7 +117,7 @@ chmod +x scripts/bootstrap.sh
 
 ```
                     ┌──────────────────────────────────────┐
-                    │        Cloudflare (DNS + CDN)        │
+                    │     Cloudflare (DNS only, no proxy)   │
                     │  dev.academind.ir  │  sahmbaz.ir     │
                     └─────────┬────────────────┬───────────┘
                               │                │
@@ -235,6 +237,45 @@ microk8s kubectl get certificates -A
 microk8s kubectl describe certificate <NAME> -n <NAMESPACE>
 # Force renewal
 microk8s kubectl delete certificate <NAME> -n <NAMESPACE>
+```
+
+### Sentry services crashing
+
+**Snuba consumer connecting to 127.0.0.1 instead of Kafka service:**
+Snuba reads `DEFAULT_BROKERS` env var, not `KAFKA_BROKER_LIST`. Verify:
+```bash
+microk8s kubectl exec -n sentry deploy/sentry-snuba-consumer -- \
+  python3 -c "from snuba.settings import BROKER_CONFIG; print(BROKER_CONFIG)"
+# Should show: {'bootstrap.servers': 'sentry-kafka:9092', ...}
+```
+
+**Redis OOM kills (high restart count):**
+Redis needs enough memory for background saves (fork doubles memory). The limit should be >= 1Gi:
+```bash
+microk8s kubectl get deploy sentry-redis -n sentry -o jsonpath='{.spec.template.spec.containers[0].resources.limits.memory}'
+```
+
+**Missing Kafka topics after Kafka restart:**
+```bash
+# List topics
+POD=$(microk8s kubectl get pod -l app=sentry-kafka -n sentry -o jsonpath='{.items[0].metadata.name}')
+microk8s kubectl exec $POD -n sentry -- kafka-topics --list --bootstrap-server localhost:9092
+
+# Recreate missing topics
+for topic in events ingest-events ingest-transactions ingest-attachments \
+             outcomes outcomes-billing sessions transactions generic-events profiles; do
+  microk8s kubectl exec $POD -n sentry -- kafka-topics --create --topic $topic \
+    --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092 --if-not-exists
+done
+```
+
+**Sentry auth token expired (CI/CD failing):**
+```bash
+# Generate new token from Sentry web UI:
+# https://sentry.academind.ir/settings/account/api/auth-tokens/
+# Then update GitHub secrets:
+gh secret set SENTRY_AUTH_TOKEN --repo PeSahm/Fundamental.Backend --body "NEW_TOKEN"
+gh secret set SENTRY_AUTH_TOKEN --repo PeSahm/Fundamental.FrontEnd --body "NEW_TOKEN"
 ```
 
 ### Registry access issues

@@ -5,7 +5,10 @@
 # - Root domain (@) -> VPS IP
 # - www subdomain -> VPS IP
 # - api subdomain -> VPS IP (backend API)
-# All records are proxied through Cloudflare for DDoS protection.
+#
+# Proxy is DISABLED because Cloudflare proxy cannot reliably reach
+# Iran-based VPS servers (timeouts, redirect loops with SSL modes).
+# TLS is handled directly by the ingress controller with Let's Encrypt.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -23,11 +26,6 @@ terraform {
 }
 
 # -----------------------------------------------------------------------------
-# Dependencies (if any)
-# -----------------------------------------------------------------------------
-# No dependencies for DNS module
-
-# -----------------------------------------------------------------------------
 # Module Inputs
 # -----------------------------------------------------------------------------
 # Production uses sahmbaz.ir domain
@@ -36,17 +34,20 @@ inputs = {
   # Cloudflare API Token for sahmbaz.ir - Read from environment variable
   # Set via: export CLOUDFLARE_API_TOKEN_PROD="your-token"
   api_token = get_env("CLOUDFLARE_API_TOKEN_PROD", "")
-  
+
   # Cloudflare Zone ID for sahmbaz.ir
   # Set via: export CLOUDFLARE_ZONE_ID_PROD="your-zone-id"
   zone_id = get_env("CLOUDFLARE_ZONE_ID_PROD", "")
-  
+
   # Production domain configuration
   domain_name = "sahmbaz.ir"
-  
+
   # Production subdomains
   subdomains = ["www", "api"]
-  
-  # Enable Cloudflare proxy (orange cloud) for DDoS protection
-  proxied = true
+
+  # Disable Cloudflare proxy - direct DNS only
+  # Reason: Cloudflare proxy cannot reliably connect to Iran-based VPS
+  # (causes timeouts and SSL redirect loops). TLS is handled by
+  # the ingress controller with Let's Encrypt certificates.
+  proxied = false
 }

@@ -348,6 +348,10 @@ spec:
             - redis-server
             - --requirepass
             - $(REDIS_PASSWORD)
+            - --maxmemory
+            - 512mb
+            - --maxmemory-policy
+            - allkeys-lru
           env:
             - name: REDIS_PASSWORD
               valueFrom:
@@ -362,10 +366,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
       volumes:
         - name: redis-data
           persistentVolumeClaim:
@@ -703,7 +707,7 @@ spec:
               value: "docker"
             - name: CLICKHOUSE_HOST
               value: "sentry-clickhouse"
-            - name: KAFKA_BROKER_LIST
+            - name: DEFAULT_BROKERS
               value: "sentry-kafka:9092"
             - name: REDIS_HOST
               value: "sentry-redis"
@@ -765,7 +769,7 @@ spec:
               value: "docker"
             - name: CLICKHOUSE_HOST
               value: "sentry-clickhouse"
-            - name: KAFKA_BROKER_LIST
+            - name: DEFAULT_BROKERS
               value: "sentry-kafka:9092"
             - name: REDIS_HOST
               value: "sentry-redis"
