@@ -94,7 +94,7 @@ migrator:
   enabled: true
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "1.0.0-20260212-31d33de"
+    tag: "1.0.0-20260212-9c7a128"
   resources:
     limits:
       cpu: 500m
