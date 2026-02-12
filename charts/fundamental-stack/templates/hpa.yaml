@@ -29,6 +29,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "fundamental-stack.backend.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -93,6 +95,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "fundamental-stack.frontend.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
