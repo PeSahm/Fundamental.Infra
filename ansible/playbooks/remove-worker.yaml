@@ -1,0 +1,131 @@
+---
+# Remove Worker Node Playbook
+# ===========================
+# Safely drains and removes a worker node from the MicroK8s cluster.
+# Run from the control plane node.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini playbooks/remove-worker.yaml \
+#     -e "worker_hostname=worker-1" -e "worker_ip=10.0.0.2"
+#
+#   # Force removal (skip drain):
+#   ansible-playbook -i inventory/hosts.ini playbooks/remove-worker.yaml \
+#     -e "worker_hostname=worker-1" -e "worker_ip=10.0.0.2" -e "force=true"
+
+- name: Remove Worker Node from MicroK8s Cluster
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    worker_hostname: ""  # REQUIRED: hostname of the worker to remove
+    worker_ip: ""        # REQUIRED: IP of the worker (for UFW cleanup)
+    force: false         # Skip drain if true
+
+    inter_node_ports:
+      - { port: 16443, proto: "tcp" }
+      - { port: 10250, proto: "tcp" }
+      - { port: 25000, proto: "tcp" }
+      - { port: 19001, proto: "tcp" }
+      - { port: 4789, proto: "udp" }
+
+  pre_tasks:
+    - name: Validate required parameters
+      ansible.builtin.fail:
+        msg: "Both worker_hostname and worker_ip are required. Use -e 'worker_hostname=worker-1' -e 'worker_ip=X.X.X.X'"
+      when: worker_hostname == '' or worker_ip == ''
+
+    - name: Check node exists in cluster
+      ansible.builtin.shell: |
+        microk8s kubectl get node {{ worker_hostname }} -o name 2>/dev/null
+      register: node_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Fail if node not in cluster
+      ansible.builtin.fail:
+        msg: "Node {{ worker_hostname }} not found in cluster"
+      when: node_exists.rc != 0
+
+  tasks:
+    # =========================================================================
+    # Step 1: Cordon node (prevent new pods)
+    # =========================================================================
+    - name: Cordon worker node
+      ansible.builtin.command:
+        cmd: microk8s kubectl cordon {{ worker_hostname }}
+      changed_when: true
+
+    # =========================================================================
+    # Step 2: Drain node (move pods to other nodes)
+    # =========================================================================
+    - name: Drain worker node
+      ansible.builtin.command:
+        cmd: >
+          microk8s kubectl drain {{ worker_hostname }}
+          --ignore-daemonsets
+          --delete-emptydir-data
+          --force
+          --timeout=300s
+      register: drain_result
+      when: not force | bool
+
+    - name: Display drain result
+      ansible.builtin.debug:
+        msg: "{{ drain_result.stdout_lines | default(['Drain skipped (force mode)']) }}"
+
+    # =========================================================================
+    # Step 3: Remove from MicroK8s cluster
+    # =========================================================================
+    - name: Remove node from cluster
+      ansible.builtin.command:
+        cmd: microk8s remove-node {{ worker_hostname }} --force
+      register: remove_result
+      changed_when: true
+
+    - name: Leave cluster on worker side
+      ansible.builtin.shell: |
+        ssh -o ConnectTimeout=10 root@{{ worker_ip }} "microk8s leave" 2>/dev/null || echo "Worker unreachable - manual cleanup may be needed"
+      changed_when: true
+      failed_when: false
+
+    # =========================================================================
+    # Step 4: Clean up UFW rules
+    # =========================================================================
+    - name: Remove UFW rules for worker on control plane
+      ansible.builtin.shell: |
+        ufw delete allow from {{ worker_ip }} to any port {{ item.port }} proto {{ item.proto }} 2>/dev/null || true
+      loop: "{{ inter_node_ports }}"
+      changed_when: true
+
+    - name: Remove UFW rules on worker
+      ansible.builtin.shell: |
+        CONTROL_IP=$(hostname -I | awk '{print $1}')
+        ssh -o ConnectTimeout=10 root@{{ worker_ip }} "ufw delete allow from $CONTROL_IP to any port {{ item.port }} proto {{ item.proto }}" 2>/dev/null || true
+      loop: "{{ inter_node_ports }}"
+      changed_when: true
+      failed_when: false
+
+    # =========================================================================
+    # Step 5: Verify
+    # =========================================================================
+    - name: Verify node removed
+      ansible.builtin.shell: |
+        microk8s kubectl get nodes -o wide
+      register: cluster_status
+      changed_when: false
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: |
+          Worker node {{ worker_hostname }} removed successfully!
+
+          Remaining cluster nodes:
+          {{ cluster_status.stdout }}
+
+          Next steps:
+            1. Remove the worker from config.yaml workers list
+            2. Remove from inventory/hosts.ini
+            3. Run ./scripts/generate-config.sh
+            4. Optionally reset MicroK8s on the removed worker:
+               ssh root@{{ worker_ip }} "snap remove microk8s --purge"
