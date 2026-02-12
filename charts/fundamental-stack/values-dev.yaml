@@ -23,7 +23,7 @@ backend:
   replicaCount: 1
   image:
     repository: registry.academind.ir/fundamental-backend
-    tag: "dev-20251229-69a9a22"
+    tag: "dev-20260212-b82da8d"
     pullPolicy: Always
   aspnetEnvironment: "Development"
   resources:
