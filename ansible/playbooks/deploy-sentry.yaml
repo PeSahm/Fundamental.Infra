@@ -1,5 +1,5 @@
 # =============================================================================
-# Sentry Self-Hosted - Ansible Playbook
+# Sentry Self-Hosted - Ansible Playbook (v26.1.0)
 # =============================================================================
 # Deploys a full-featured self-hosted Sentry instance with:
 # - Session Replay
@@ -7,19 +7,30 @@
 # - GitHub Integration
 # - Performance Monitoring
 # - Profiling
+#
+# Architecture (26.x):
+# - Images from GHCR (ghcr.io/getsentry/*)
+# - Taskbroker + Taskworker replace Celery worker/cron
+# - Kafka uses KRaft mode (no Zookeeper)
+# - ClickHouse 25.3 (Altinity)
 # =============================================================================
 ---
 - name: Deploy Sentry Self-Hosted
   hosts: vps
-  become: yes
+  become: true
 
   vars:
     # Sentry configuration
-    sentry_version: "24.11.1"
+    sentry_version: "26.1.0"
+    sentry_image_registry: "ghcr.io/getsentry"
     sentry_domain: "sentry.academind.ir"
     sentry_namespace: "sentry"
 
-    # Enable Relay for SDK event ingestion (required for Sentry 24.x+)
+    # Clean install - deletes existing namespace before deploying
+    # Set to true when upgrading across major versions with no data to preserve
+    sentry_clean_install: true
+
+    # Enable Relay for SDK event ingestion
     sentry_relay_enabled: true
 
     # CSRF trusted origins for frontend
@@ -80,6 +91,16 @@
 
   tasks:
     # =========================================================================
+    # Clean Install (optional - for major version upgrades)
+    # =========================================================================
+    - name: Clean existing Sentry deployment (fresh install)
+      shell: |
+        microk8s kubectl delete namespace {{ sentry_namespace }} --ignore-not-found --wait=true
+      when: sentry_clean_install | default(false) | bool
+      changed_when: false
+      ignore_errors: true
+
+    # =========================================================================
     # Prerequisites
     # =========================================================================
     - name: Create Sentry namespace
@@ -100,6 +121,7 @@
         - "{{ sentry_data_path }}/clickhouse"
         - "{{ sentry_data_path }}/symbolicator"
         - "{{ sentry_data_path }}/files"
+        - "{{ sentry_data_path }}/taskbroker"
         - "{{ sentry_data_path }}/geoip"
 
     # =========================================================================
@@ -204,14 +226,14 @@
         apiVersion: v1
         kind: PersistentVolumeClaim
         metadata:
-          name: sentry-zookeeper-pvc
+          name: sentry-taskbroker-pvc
           namespace: {{ sentry_namespace }}
         spec:
           accessModes:
             - ReadWriteOnce
           resources:
             requests:
-              storage: 5Gi
+              storage: 2Gi
           storageClassName: microk8s-hostpath
         ---
         apiVersion: v1
@@ -284,7 +306,10 @@
                      snuba-dead-letter-inserts snuba-commit-log sessions \
                      generic-events transactions profiles ingest-occurrences \
                      snuba-generic-events-commit-log snuba-sessions-commit-log \
-                     snuba-transactions-commit-log; do
+                     snuba-transactions-commit-log \
+                     ingest-monitors scheduled-subscriptions-events \
+                     scheduled-subscriptions-transactions \
+                     scheduled-subscriptions-metrics scheduled-subscriptions-generic-metrics; do
           microk8s kubectl exec $POD -n {{ sentry_namespace }} -- \
             kafka-topics --create --topic $topic \
             --partitions 1 --replication-factor 1 \
@@ -311,7 +336,7 @@
       changed_when: false
       retries: 3
       delay: 30
-      ignore_errors: yes
+      ignore_errors: true
 
     - name: Create admin user
       shell: |
@@ -471,7 +496,7 @@
       changed_when: false
       retries: 3
       delay: 30
-      ignore_errors: yes
+      ignore_errors: true
 
     # =========================================================================
     # Restart services to pick up all configurations
@@ -480,8 +505,8 @@
       shell: |
         microk8s kubectl rollout restart \
           deployment/sentry-web \
-          deployment/sentry-worker \
-          deployment/sentry-cron \
+          deployment/sentry-taskworker \
+          deployment/sentry-taskbroker \
           -n {{ sentry_namespace }}
       changed_when: false
 

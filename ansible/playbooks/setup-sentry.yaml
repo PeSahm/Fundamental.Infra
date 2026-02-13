@@ -1,18 +1,23 @@
 # =============================================================================
-# Sentry Self-Hosted - Simplified Kubernetes Deployment
+# Sentry Self-Hosted - Simplified Kubernetes Deployment (v26.1.0)
 # =============================================================================
 # This playbook deploys Sentry using the official self-hosted installer
 # modified for Kubernetes environments.
+#
+# Architecture (26.x):
+# - Images from GHCR (ghcr.io/getsentry/*)
+# - Taskbroker + Taskworker replace Celery worker/cron
+# - Kafka uses KRaft mode (no Zookeeper)
 # =============================================================================
 ---
 - name: Deploy Sentry Self-Hosted
   hosts: vps
-  become: yes
+  become: true
 
   vars:
     sentry_namespace: "sentry"
     sentry_domain: "sentry.academind.ir"
-    sentry_version: "24.11.1"
+    sentry_version: "26.1.0"
 
     # Credentials (override with ansible-vault in production)
     sentry_admin_email: "admin@academind.ir"
@@ -107,7 +112,7 @@
         - { name: redis, size: "5Gi" }
         - { name: kafka, size: "10Gi" }
         - { name: clickhouse, size: "20Gi" }
-        - { name: zookeeper, size: "5Gi" }
+        - { name: taskbroker, size: "2Gi" }
         - { name: files, size: "20Gi" }
         - { name: symbolicator, size: "10Gi" }
 
@@ -174,7 +179,7 @@
                 restartPolicy: OnFailure
                 containers:
                   - name: sentry-upgrade
-                    image: "getsentry/sentry:{{ sentry_version }}"
+                    image: "ghcr.io/getsentry/sentry:{{ sentry_version }}"
                     command: ["sentry", "upgrade", "--noinput"]
                     env:
                       - name: SENTRY_SECRET_KEY
@@ -216,7 +221,7 @@
       until: migration_job.resources[0].status.succeeded | default(0) >= 1
       retries: 30
       delay: 20
-      ignore_errors: yes
+      ignore_errors: true
 
     # =========================================================================
     # Create Admin User
@@ -238,7 +243,7 @@
                 restartPolicy: OnFailure
                 containers:
                   - name: sentry-createuser
-                    image: "getsentry/sentry:{{ sentry_version }}"
+                    image: "ghcr.io/getsentry/sentry:{{ sentry_version }}"
                     command:
                       - sentry
                       - createuser

@@ -241,6 +241,10 @@ microk8s kubectl delete certificate <NAME> -n <NAMESPACE>
 
 ### Sentry services crashing
 
+> **Note (v26.1.0):** Images are from GHCR (`ghcr.io/getsentry/*`), not DockerHub.
+> Celery worker/cron replaced by `taskbroker` + `taskworker`.
+> Kafka uses KRaft mode (no Zookeeper).
+
 **Snuba consumer connecting to 127.0.0.1 instead of Kafka service:**
 Snuba reads `DEFAULT_BROKERS` env var, not `KAFKA_BROKER_LIST`. Verify:
 ```bash
@@ -263,10 +267,22 @@ microk8s kubectl exec $POD -n sentry -- kafka-topics --list --bootstrap-server l
 
 # Recreate missing topics
 for topic in events ingest-events ingest-transactions ingest-attachments \
-             outcomes outcomes-billing sessions transactions generic-events profiles; do
+             outcomes outcomes-billing sessions transactions generic-events \
+             profiles ingest-occurrences ingest-replay-events \
+             ingest-monitors scheduled-subscriptions-events; do
   microk8s kubectl exec $POD -n sentry -- kafka-topics --create --topic $topic \
     --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092 --if-not-exists
 done
+```
+
+**Taskbroker/taskworker not running (replaced Celery in 26.x):**
+```bash
+# Check taskbroker and taskworker status
+microk8s kubectl get deploy -n sentry | grep -E "task"
+# Expected: sentry-taskbroker and sentry-taskworker both with 1/1
+
+# Check taskbroker gRPC connectivity
+microk8s kubectl logs deploy/sentry-taskworker -n sentry --tail=20
 ```
 
 **Sentry auth token expired (CI/CD failing):**

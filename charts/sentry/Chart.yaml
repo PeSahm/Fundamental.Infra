@@ -15,7 +15,7 @@ name: sentry
 description: Self-hosted Sentry for error tracking and performance monitoring
 type: application
 version: 1.0.0
-appVersion: "24.11.1"
+appVersion: "26.1.0"
 
 keywords:
   - sentry

@@ -1,11 +1,17 @@
 # =============================================================================
-# Sentry Self-Hosted - Default Values
+# Sentry Self-Hosted - Default Values (v26.1.0)
 # =============================================================================
 # Complete configuration for self-hosted Sentry deployment with:
 # - Session Replay
 # - Source Maps support
 # - GitHub Integration
 # - Performance Monitoring
+#
+# Architecture (26.x):
+# - Images from GHCR (ghcr.io/getsentry/*)
+# - Taskbroker + Taskworker replace Celery worker/cron
+# - Kafka uses KRaft mode (no Zookeeper)
+# - ClickHouse 25.3 (Altinity)
 # =============================================================================
 
 # Namespace for Sentry deployment
@@ -23,27 +29,31 @@ global:
 # Sentry Core Configuration
 # =============================================================================
 sentry:
-  # Sentry images
+  # Sentry images (GHCR - DockerHub no longer publishes versioned tags)
   images:
     sentry:
-      repository: getsentry/sentry
-      tag: "24.11.1"
+      repository: ghcr.io/getsentry/sentry
+      tag: "26.1.0"
       pullPolicy: IfNotPresent
     relay:
-      repository: getsentry/relay
-      tag: "24.11.1"
+      repository: ghcr.io/getsentry/relay
+      tag: "26.1.0"
       pullPolicy: IfNotPresent
     snuba:
-      repository: getsentry/snuba
-      tag: "24.11.1"
+      repository: ghcr.io/getsentry/snuba
+      tag: "26.1.0"
       pullPolicy: IfNotPresent
     symbolicator:
-      repository: getsentry/symbolicator
-      tag: "24.11.1"
+      repository: ghcr.io/getsentry/symbolicator
+      tag: "26.1.0"
       pullPolicy: IfNotPresent
     vroom:
-      repository: getsentry/vroom
-      tag: "24.11.1"
+      repository: ghcr.io/getsentry/vroom
+      tag: "26.1.0"
+      pullPolicy: IfNotPresent
+    taskbroker:
+      repository: ghcr.io/getsentry/taskbroker
+      tag: "26.1.0"
       pullPolicy: IfNotPresent
 
   # Secret configuration
@@ -212,25 +222,11 @@ web:
     failureThreshold: 3
 
 # =============================================================================
-# Worker Service
+# Taskbroker Service (replaces Celery worker in 26.x)
 # =============================================================================
-worker:
+taskbroker:
   replicaCount: 1
-  
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
 
-# =============================================================================
-# Cron Service
-# =============================================================================
-cron:
-  replicaCount: 1
-  
   resources:
     requests:
       cpu: 100m
@@ -238,6 +234,21 @@ cron:
     limits:
       cpu: 500m
       memory: 512Mi
+
+# =============================================================================
+# Taskworker Service (replaces Celery cron in 26.x)
+# =============================================================================
+taskworker:
+  replicaCount: 1
+  concurrency: 4
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
 
 # =============================================================================
 # Relay Service (Event ingestion)
@@ -256,8 +267,8 @@ relay:
   logLevel: "INFO"
   
   image:
-    repository: getsentry/relay
-    tag: "24.11.1"
+    repository: ghcr.io/getsentry/relay
+    tag: "26.1.0"
   
   resources:
     requests:
@@ -306,25 +317,35 @@ snuba:
 # =============================================================================
 ingress:
   enabled: true
+  host: "sentry.academind.ir"
   className: "public"
-  
+  tlsSecretName: "sentry-tls"
+
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-  
+
   hosts:
     - host: sentry.academind.ir
       paths:
         - path: /
           pathType: Prefix
-  
+
   tls:
     - secretName: sentry-tls
       hosts:
         - sentry.academind.ir
+
+  cors:
+    enabled: true
+    allowOrigins:
+      - "https://sentry.academind.ir"
+      - "https://dev.academind.ir"
+      - "https://academind.ir"
+      - "https://www.academind.ir"
 
 # =============================================================================
 # PostgreSQL (Sentry's primary database)
@@ -420,48 +441,12 @@ clickhouse:
       memory: 2Gi
 
 # =============================================================================
-# Zookeeper (For Kafka and ClickHouse coordination)
-# =============================================================================
-zookeeper:
-  enabled: true
-  
-  replicaCount: 1
-  
-  persistence:
-    enabled: true
-    size: 5Gi
-  
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-# =============================================================================
 # Service Account
 # =============================================================================
 serviceAccount:
   create: true
   name: "sentry"
   annotations: {}
-
-# =============================================================================
-# Ingress Configuration
-# =============================================================================
-ingress:
-  host: "sentry.academind.ir"
-  className: "public"
-  tlsSecretName: "sentry-tls"
-  cors:
-    enabled: true
-    # Origins allowed to send events to Sentry (your frontend domains)
-    allowOrigins:
-      - "https://sentry.academind.ir"
-      - "https://dev.academind.ir"
-      - "https://academind.ir"
-      - "https://www.academind.ir"
 
 # =============================================================================
 # Init Jobs
