@@ -108,6 +108,28 @@
         microk8s kubectl create namespace {{ sentry_namespace }} --dry-run=client -o yaml | microk8s kubectl apply -f -
       changed_when: false
 
+    # =========================================================================
+    # Preserve existing secrets across re-runs
+    # =========================================================================
+    - name: Check for existing Sentry secrets
+      shell: |
+        microk8s kubectl get secret sentry-secrets -n {{ sentry_namespace }} -o json 2>/dev/null
+      register: existing_secrets_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Use existing secret values (preserve across re-runs)
+      set_fact:
+        sentry_secret_key: "{{ (existing_secrets_check.stdout | from_json).data['secret-key'] | b64decode }}"
+        sentry_postgres_password: "{{ (existing_secrets_check.stdout | from_json).data['postgres-password'] | b64decode }}"
+        sentry_redis_password: "{{ (existing_secrets_check.stdout | from_json).data['redis-password'] | b64decode }}"
+        sentry_admin_password: "{{ (existing_secrets_check.stdout | from_json).data['admin-password'] | b64decode }}"
+      when:
+        - existing_secrets_check.rc == 0
+        - existing_secrets_check.stdout | length > 0
+        - not (sentry_clean_install | default(false) | bool)
+      no_log: true
+
     - name: Create Sentry data directories
       file:
         path: "{{ item }}"
