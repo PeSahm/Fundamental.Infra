@@ -28,7 +28,7 @@
 
     # Clean install - deletes existing namespace before deploying
     # Set to true when upgrading across major versions with no data to preserve
-    sentry_clean_install: true
+    sentry_clean_install: false
 
     # Enable Relay for SDK event ingestion
     sentry_relay_enabled: true
