@@ -1219,6 +1219,201 @@ spec:
             name: sentry-config
 
 # =============================================================================
+# Sentry Ingest Consumers (process raw events from Kafka)
+# These consumers read from ingest-* topics, process events, and produce to
+# the events/transactions topics that Snuba consumers read from.
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-ingest-consumer
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-ingest-consumer
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-ingest-consumer
+  template:
+    metadata:
+      labels:
+        app: sentry-ingest-consumer
+    spec:
+      containers:
+        - name: sentry
+          image: {{ sentry_image_registry }}/sentry:{{ sentry_version }}
+          command: ["sentry", "run", "consumer", "ingest-events", "--consumer-group", "ingest-consumer", "--auto-offset-reset=latest"]
+          env:
+            - name: SENTRY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: secret-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+            - name: SNUBA
+              value: "http://sentry-snuba-api.{{ sentry_namespace }}.svc.cluster.local:1218"
+            - name: KAFKA_CLUSTERS
+              value: '{"default": {"bootstrap.servers": "sentry-kafka.{{ sentry_namespace }}.svc.cluster.local:9092"}}'
+            - name: SENTRY_CONF
+              value: "/etc/sentry"
+          volumeMounts:
+            - name: sentry-config
+              mountPath: /etc/sentry/sentry.conf.py
+              subPath: sentry.conf.py
+            - name: sentry-config
+              mountPath: /etc/sentry/config.yml
+              subPath: config.yml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: sentry-config
+          configMap:
+            name: sentry-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-ingest-transactions-consumer
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-ingest-transactions-consumer
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-ingest-transactions-consumer
+  template:
+    metadata:
+      labels:
+        app: sentry-ingest-transactions-consumer
+    spec:
+      containers:
+        - name: sentry
+          image: {{ sentry_image_registry }}/sentry:{{ sentry_version }}
+          command: ["sentry", "run", "consumer", "ingest-transactions", "--consumer-group", "ingest-consumer", "--auto-offset-reset=latest"]
+          env:
+            - name: SENTRY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: secret-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+            - name: SNUBA
+              value: "http://sentry-snuba-api.{{ sentry_namespace }}.svc.cluster.local:1218"
+            - name: KAFKA_CLUSTERS
+              value: '{"default": {"bootstrap.servers": "sentry-kafka.{{ sentry_namespace }}.svc.cluster.local:9092"}}'
+            - name: SENTRY_CONF
+              value: "/etc/sentry"
+          volumeMounts:
+            - name: sentry-config
+              mountPath: /etc/sentry/sentry.conf.py
+              subPath: sentry.conf.py
+            - name: sentry-config
+              mountPath: /etc/sentry/config.yml
+              subPath: config.yml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: sentry-config
+          configMap:
+            name: sentry-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry-ingest-attachments-consumer
+  namespace: {{ sentry_namespace }}
+  labels:
+    app: sentry-ingest-attachments-consumer
+    app.kubernetes.io/part-of: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry-ingest-attachments-consumer
+  template:
+    metadata:
+      labels:
+        app: sentry-ingest-attachments-consumer
+    spec:
+      containers:
+        - name: sentry
+          image: {{ sentry_image_registry }}/sentry:{{ sentry_version }}
+          command: ["sentry", "run", "consumer", "ingest-attachments", "--consumer-group", "ingest-consumer", "--auto-offset-reset=latest"]
+          env:
+            - name: SENTRY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: secret-key
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: postgres-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentry-secrets
+                  key: redis-password
+            - name: SNUBA
+              value: "http://sentry-snuba-api.{{ sentry_namespace }}.svc.cluster.local:1218"
+            - name: KAFKA_CLUSTERS
+              value: '{"default": {"bootstrap.servers": "sentry-kafka.{{ sentry_namespace }}.svc.cluster.local:9092"}}'
+            - name: SENTRY_CONF
+              value: "/etc/sentry"
+          volumeMounts:
+            - name: sentry-config
+              mountPath: /etc/sentry/sentry.conf.py
+              subPath: sentry.conf.py
+            - name: sentry-config
+              mountPath: /etc/sentry/config.yml
+              subPath: config.yml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+      volumes:
+        - name: sentry-config
+          configMap:
+            name: sentry-config
+
+# =============================================================================
 # Sentry Cleanup (periodic old data cleanup)
 # =============================================================================
 ---
