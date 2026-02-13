@@ -212,6 +212,9 @@ data:
 
     processing:
       enabled: true
+      kafka_config:
+        - {name: "bootstrap.servers", value: "sentry-kafka.{{ sentry_namespace }}.svc.cluster.local:9092"}
+      redis: "redis://:{{ sentry_redis_password }}@sentry-redis.{{ sentry_namespace }}.svc.cluster.local:6379"
 
     logging:
       level: INFO
@@ -913,17 +916,15 @@ spec:
       containers:
         - name: relay
           image: {{ sentry_image_registry }}/relay:{{ sentry_version }}
-          env:
-            - name: RELAY_UPSTREAM__URL
-              value: "http://sentry-web:9000/"
-            - name: RELAY_MODE
-              value: "proxy"
-            - name: RELAY_HOST
-              value: "0.0.0.0"
-            - name: RELAY_PORT
-              value: "3000"
           ports:
             - containerPort: 3000
+          volumeMounts:
+            - name: relay-config
+              mountPath: /work/.relay/config.yml
+              subPath: relay-config.yml
+            - name: relay-credentials
+              mountPath: /work/.relay/credentials.json
+              subPath: credentials.json
           resources:
             requests:
               cpu: 100m
@@ -935,14 +936,27 @@ spec:
             httpGet:
               path: /api/relay/healthcheck/live/
               port: 3000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /api/relay/healthcheck/ready/
               port: 3000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 10
+      volumes:
+        - name: relay-config
+          configMap:
+            name: sentry-config
+            items:
+              - key: relay-config.yml
+                path: relay-config.yml
+        - name: relay-credentials
+          secret:
+            secretName: sentry-relay-credentials
+            items:
+              - key: credentials.json
+                path: credentials.json
 ---
 apiVersion: v1
 kind: Service

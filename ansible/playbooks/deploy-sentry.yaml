@@ -178,6 +178,40 @@
       no_log: true
 
     # =========================================================================
+    # Relay Credentials
+    # =========================================================================
+    - name: Check for existing Relay credentials
+      shell: |
+        microk8s kubectl get secret sentry-relay-credentials -n {{ sentry_namespace }} -o jsonpath='{.data.credentials\.json}' 2>/dev/null | base64 -d
+      register: existing_relay_creds
+      changed_when: false
+      ignore_errors: true
+
+    - name: Generate Relay credentials (first deploy only)
+      shell: |
+        microk8s kubectl run relay-creds-gen --rm -it --restart=Never \
+          --image={{ sentry_image_registry }}/relay:{{ sentry_version }} \
+          -n {{ sentry_namespace }} -- credentials generate --stdout 2>/dev/null | grep '{' | head -1
+      register: relay_creds_generated
+      changed_when: false
+      when: existing_relay_creds.rc != 0 or existing_relay_creds.stdout | length == 0
+
+    - name: Create Relay credentials secret
+      shell: |
+        cat <<'RELAYEOF' | microk8s kubectl apply -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: sentry-relay-credentials
+          namespace: {{ sentry_namespace }}
+        type: Opaque
+        stringData:
+          credentials.json: '{{ relay_creds_generated.stdout }}'
+        RELAYEOF
+      changed_when: false
+      when: relay_creds_generated is changed or (existing_relay_creds.rc != 0 or existing_relay_creds.stdout | length == 0)
+
+    # =========================================================================
     # NOTE: ConfigMap is defined in templates/sentry-deployment.yaml.j2
     # It includes all necessary configurations for:
     # - SECRET_KEY using SENTRY_OPTIONS (not deprecated SECRET_KEY)
