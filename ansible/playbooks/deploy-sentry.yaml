@@ -84,7 +84,7 @@
         github_repo: "Fundamental.FrontEnd"
 
     # GitHub configuration for updating secrets
-    github_owner: "{{ github_owner | default('PeSahm') }}"
+    github_owner: "PeSahm"
 
     # Storage paths
     sentry_data_path: "/opt/sentry/data"

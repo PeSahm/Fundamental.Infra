@@ -229,6 +229,21 @@ data:
       diagnostics:
         retention: 1w
 
+  clickhouse-users.xml: |
+    <clickhouse>
+      <users>
+        <default>
+          <password></password>
+          <networks>
+            <ip>::/0</ip>
+          </networks>
+          <profile>default</profile>
+          <quota>default</quota>
+          <access_management>1</access_management>
+        </default>
+      </users>
+    </clickhouse>
+
 # =============================================================================
 # PostgreSQL
 # =============================================================================
@@ -530,6 +545,9 @@ spec:
           volumeMounts:
             - name: clickhouse-data
               mountPath: /var/lib/clickhouse
+            - name: clickhouse-users
+              mountPath: /etc/clickhouse-server/users.d/default.xml
+              subPath: clickhouse-users.xml
           resources:
             requests:
               cpu: 200m
@@ -541,6 +559,12 @@ spec:
         - name: clickhouse-data
           persistentVolumeClaim:
             claimName: sentry-clickhouse-pvc
+        - name: clickhouse-users
+          configMap:
+            name: sentry-config
+            items:
+              - key: clickhouse-users.xml
+                path: clickhouse-users.xml
 ---
 apiVersion: v1
 kind: Service
