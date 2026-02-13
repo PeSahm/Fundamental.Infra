@@ -439,17 +439,23 @@ spec:
               name: kafka
             - containerPort: 9093
               name: controller
+          # Startup probe: gives Kafka up to 5 min to start (KRaft init can be slow)
+          startupProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           livenessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
           readinessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -462,7 +468,7 @@ spec:
               memory: 512Mi
             limits:
               cpu: 1000m
-              memory: 1Gi
+              memory: 1536Mi
           lifecycle:
             preStop:
               exec:
@@ -802,14 +808,32 @@ spec:
       labels:
         app: sentry-vroom
     spec:
+      initContainers:
+        - name: create-profiles-dir
+          image: busybox:1.36
+          command: ["mkdir", "-p", "/var/vroom/sentry-profiles"]
+          volumeMounts:
+            - name: vroom-profiles
+              mountPath: /var/vroom/sentry-profiles
       containers:
         - name: vroom
           image: {{ sentry_image_registry }}/vroom:{{ sentry_version }}
           env:
-            - name: SENTRY_KAFKA_BROKERS
+            - name: SENTRY_KAFKA_BROKERS_PROFILING
               value: "sentry-kafka:9092"
+            - name: SENTRY_KAFKA_BROKERS_OCCURRENCES
+              value: "sentry-kafka:9092"
+            - name: SENTRY_KAFKA_BROKERS_SPANS
+              value: "sentry-kafka:9092"
+            - name: SENTRY_SNUBA_HOST
+              value: "http://sentry-snuba-api:1218"
+            - name: SENTRY_BUCKET_PROFILES
+              value: "file:///var/vroom/sentry-profiles"
           ports:
             - containerPort: 8085
+          volumeMounts:
+            - name: vroom-profiles
+              mountPath: /var/vroom/sentry-profiles
           resources:
             requests:
               cpu: 100m
@@ -817,6 +841,9 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: vroom-profiles
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -1032,8 +1059,10 @@ spec:
         - name: taskbroker
           image: {{ sentry_image_registry }}/taskbroker:{{ sentry_version }}
           env:
-            - name: KAFKA_CLUSTERS
-              value: '{"default": {"bootstrap.servers": "sentry-kafka:9092"}}'
+            - name: TASKBROKER_KAFKA_CLUSTER
+              value: "sentry-kafka:9092"
+            - name: TASKBROKER_KAFKA_DEADLETTER_CLUSTER
+              value: "sentry-kafka:9092"
             - name: TASKBROKER_DB_PATH
               value: "/var/lib/taskbroker/db/taskbroker.db"
           ports:
