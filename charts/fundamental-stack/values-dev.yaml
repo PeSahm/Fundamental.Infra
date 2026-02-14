@@ -129,7 +129,7 @@ migrator:
   enabled: true
   image:
     repository: registry.academind.ir/fundamental-migrations
-    tag: "dev-20260213-aeb5d53"
+    tag: "dev-20260214-98056ce"
     pullPolicy: Always
   resources:
     limits:
